@@ -1,0 +1,8 @@
+# Core Dependencies
+PyQt5==5.15.9
+qt-material==2.14
+requests==2.31.0
+beautifulsoup4==4.12.2
+
+# Optional (For Building)
+pyinstaller==6.2.0
