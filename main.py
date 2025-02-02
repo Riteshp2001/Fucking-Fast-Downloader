@@ -176,8 +176,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.progress_bar.setFormat("%v / %m bytes")
         # Horizontal layout for Pause and Resume buttons beside progress bar.
         pause_resume_layout = QtWidgets.QHBoxLayout()
-        self.pause_btn = QtWidgets.QPushButton("⏸ Pause")
-        self.resume_btn = QtWidgets.QPushButton("▶ Resume")
+        self.pause_btn = QtWidgets.QPushButton("▶ Pause")
+        self.resume_btn = QtWidgets.QPushButton("⏸ Resume")
         pause_resume_layout.addWidget(self.pause_btn)
         pause_resume_layout.addWidget(self.resume_btn)
         # Detailed progress label.
@@ -216,42 +216,28 @@ class MainWindow(QtWidgets.QMainWindow):
         self.github_button = QtWidgets.QPushButton()        
         self.github_button.setIcon(QtGui.QIcon(os.path.join(self.base_path, "icons", "github.png")))
         self.github_button.setIconSize(QtCore.QSize(64, 64))  # Increased icon size for better visibility
-        self.github_button.setToolTip("View on GitHub")
+        self.github_button.setToolTip("View Source Code on Github 🐙")
         self.github_button.setStyleSheet("""
             border: none;
-            margin: 5px;
+            margin: 10px;
+            padding: 5px 0px;
             background-color: transparent;
-            transition: background-color 0.3s, transform 0.2s;
         """)
-        # Hover effect and enlarge on hover
-        self.github_button.setStyleSheet(self.github_button.styleSheet() + """
-            QPushButton:hover {
-                background-color: #f0f0f0;  # Change to your desired hover color
-                transform: scale(1.1);  # Slightly enlarge the button on hover
-            }
-        """)
-        self.github_button.clicked.connect(lambda: webbrowser.open("https://github.com/yourusername"))
+        self.github_button.clicked.connect(lambda: webbrowser.open("https://github.com/Riteshp2001/Fucking-Fast-Downloader"))
 
-        self.paypal_button = QtWidgets.QPushButton()        
-        self.paypal_button.setIcon(QtGui.QIcon(os.path.join(self.base_path, "icons", "paypal.png")))
-        self.paypal_button.setIconSize(QtCore.QSize(64, 64))  # Increased icon size for better visibility
-        self.paypal_button.setToolTip("Support via PayPal")
-        self.paypal_button.setStyleSheet("""
+        self.buymecoffee_button = QtWidgets.QPushButton()        
+        self.buymecoffee_button.setIcon(QtGui.QIcon(os.path.join(self.base_path, "icons", "buymecoffee.png")))
+        self.buymecoffee_button.setIconSize(QtCore.QSize(64, 64))  # Increased icon size for better visibility
+        self.buymecoffee_button.setToolTip("Just Buy me a Coffee ☕ Already !!")
+        self.buymecoffee_button.setStyleSheet("""
             border: none;
-            margin: 5px;
+            margin: 10px;
+            padding: 5px 0px;
             background-color: transparent;
-            transition: background-color 0.3s, transform 0.2s;
         """)
-        # Hover effect and enlarge on hover
-        self.paypal_button.setStyleSheet(self.paypal_button.styleSheet() + """
-            QPushButton:hover {
-                background-color: #f0f0f0;  # Change to your desired hover color
-                transform: scale(1.1);  # Slightly enlarge the button on hover
-            }
-        """)
-        self.paypal_button.clicked.connect(lambda: webbrowser.open("https://paypal.me/yourpaypal"))
+        self.buymecoffee_button.clicked.connect(lambda: webbrowser.open("https://buymeacoffee.com/riteshp2001/e/367661"))
 
-        self.support = QtWidgets.QLabel("Support me on Paypal and View my Work !! 🫡")
+        self.support = QtWidgets.QLabel("Support My Work on Buy Me a Coffee & Check Out What I've Been Up To on Github! 🫡")
         self.support.setAlignment(QtCore.Qt.AlignCenter)
         self.support.setStyleSheet("font-size: 14px; font-weight: bold; margin-top: 10px;")
 
@@ -264,7 +250,7 @@ class MainWindow(QtWidgets.QMainWindow):
         bottom_layout.addStretch()
         bottom_layout.addWidget(self.support)
         bottom_layout.addStretch()
-        bottom_layout.addWidget(self.paypal_button)
+        bottom_layout.addWidget(self.buymecoffee_button)
         bottom_layout.addStretch()
 
         main_layout.addLayout(bottom_layout)
