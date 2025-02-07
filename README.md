@@ -42,7 +42,7 @@ pyinstaller --noconfirm --onefile --windowed \
   --icon "icons/app.ico" \
   --add-data "icons;icons" \
   --add-data "input.txt;." \
-  --name "FuckingFastDownloader" \
+  --name "FFDownloader" \
   main.py
 ```
 
