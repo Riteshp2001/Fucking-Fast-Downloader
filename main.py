@@ -119,44 +119,54 @@ class DownloaderWorker(QtCore.QThread):
         self.log_signal.emit("Download resumed.")
 
     def run(self):
-        """Process each link: fetch, parse, and download the file."""
+        """Process each link: fetch, parse, and download the file with retry logic."""
         for link in self.links:
-            self.log_signal.emit(f"Processing link:\n  {link}")
-            try:
-                response = requests.get(link, headers=HEADERS)
-            except Exception as e:
-                self.log_signal.emit(f"Error fetching link:\n  {link}\n  {e}")
-                continue
+            attempts = 0
+            success = False
+            # Try up to 3 times before moving on to the next link
+            while attempts < 3 and not success:
+                self.log_signal.emit(f"Processing link:\n  {link} (Attempt {attempts+1}/3)")
+                try:
+                    # Fetch the webpage for the link
+                    response = requests.get(link, headers=HEADERS)
+                    if response.status_code != 200:
+                        raise Exception(f"Failed to retrieve link (HTTP {response.status_code})")
+                    
+                    # Parse the webpage for file information
+                    soup = BeautifulSoup(response.text, 'html.parser')
+                    meta_title = soup.find('meta', attrs={'name': 'title'})
+                    file_name = meta_title['content'] if meta_title else "default_file_name"
 
-            if response.status_code != 200:
-                self.log_signal.emit(f"Failed to retrieve link ({response.status_code}):\n  {link}")
-                continue
+                    # Search for a download URL in the script tags.
+                    download_url = None
+                    for script in soup.find_all('script'):
+                        if 'function download' in script.text:
+                            match = re.search(r'window\.open\(["\'](https?://[^\s"\'\)]+)', script.text)
+                            if match:
+                                download_url = match.group(1)
+                            break
 
-            soup = BeautifulSoup(response.text, 'html.parser')
-            meta_title = soup.find('meta', attrs={'name': 'title'})
-            file_name = meta_title['content'] if meta_title else "default_file_name"
+                    if not download_url:
+                        raise Exception("Download URL not found")
 
-            # Search for a download URL in the script tags.
-            download_url = None
-            for script in soup.find_all('script'):
-                if 'function download' in script.text:
-                    match = re.search(r'window\.open\(["\'](https?://[^\s"\'\)]+)', script.text)
-                    if match:
-                        download_url = match.group(1)
-                    break
-
-            if not download_url:
-                self.log_signal.emit(f"Download URL not found for link:\n  {link}")
-                continue
-
-            self.log_signal.emit(f"Downloading '{file_name}' from:\n  {download_url[:70]}...")
-            output_path = os.path.join(DOWNLOADS_FOLDER, file_name)
-            self.file_signal.emit(os.path.basename(output_path))
-            try:
-                self.download_file(download_url, output_path)
-                self.link_removed_signal.emit(link)
-            except Exception as e:
-                self.log_signal.emit(f"Error downloading '{file_name}': {e}")
+                    self.log_signal.emit(f"Downloading '{file_name}' from:\n  {download_url[:70]}...")
+                    output_path = os.path.join(DOWNLOADS_FOLDER, file_name)
+                    self.file_signal.emit(os.path.basename(output_path))
+                    
+                    # Download the file
+                    self.download_file(download_url, output_path)
+                    self.link_removed_signal.emit(link)
+                    
+                    # Mark as successful so we break out of the retry loop
+                    success = True
+                except Exception as e:
+                    attempts += 1
+                    self.log_signal.emit(f"Error processing link:\n  {link}\n  Attempt {attempts}/3, error: {e}")
+                    if attempts < 3:
+                        # Wait 3 seconds before retrying
+                        QtCore.QThread.sleep(3)
+                    else:
+                        self.log_signal.emit(f"Skipping link after 3 failed attempts:\n  {link}")
 
         self.status_signal.emit("All downloads completed.")
         self.log_signal.emit("All downloads have been processed.")
@@ -224,15 +234,6 @@ class MainWindow(QtWidgets.QMainWindow):
         top_button_layout.addWidget(self.load_btn)
         top_button_layout.addWidget(self.download_btn)
         main_layout.addLayout(top_button_layout)
-
-        # Usage instructions.
-        # self.usage_label = QtWidgets.QLabel(
-        #     "Usage: Click 'Load Links' to import download links from input.txt. "
-        #     "Double-click any link to copy it to clipboard. "
-        #     "Click 'Download All' to start downloading. Use Pause/Resume to control downloads."
-        # )
-        # self.usage_label.setStyleSheet("color: #CCCCCC; font-size: 12px; margin-bottom: 10px;")
-        # main_layout.addWidget(self.usage_label)
 
         # Main content layout.
         content_layout = QtWidgets.QHBoxLayout()
