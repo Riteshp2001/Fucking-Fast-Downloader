@@ -178,29 +178,43 @@ class DownloaderWorker(QtCore.QThread):
         Download a file from the specified URL and save it to the given path.
         """
         self.status_signal.emit("Downloading...")
-        response = requests.get(download_url, stream=True)
+        response = requests.get(download_url, stream=True, headers=HEADERS)
         if response.status_code != 200:
             raise Exception(f"HTTP Error: {response.status_code}")
 
         total_size = int(response.headers.get('content-length', 0))
-        block_size = 1024
+        block_size = 65536  # Increased block size to 64KB
         downloaded = 0
         start_time = time.time()
+        total_paused_time = 0.0
+        pause_start = 0.0
 
         with open(output_path, 'wb') as f:
             for data in response.iter_content(block_size):
                 while self._is_paused:
+                    if pause_start == 0.0:
+                        pause_start = time.time()
                     self.msleep(100)
+                
+                # Add paused time to total_paused_time when resuming
+                if pause_start != 0.0:
+                    total_paused_time += time.time() - pause_start
+                    pause_start = 0.0
+
                 if data:
                     f.write(data)
+                    f.flush()  # Ensure data is written to disk immediately
                     downloaded += len(data)
-                    elapsed = time.time() - start_time
-                    speed = downloaded / elapsed if elapsed > 0 else 0
+                    elapsed = (time.time() - start_time) - total_paused_time
+                    if elapsed > 0:
+                        speed = downloaded / elapsed  # Bytes per second
+                    else:
+                        speed = 0
                     self.progress_signal.emit(downloaded, total_size)
-                    self.speed_signal.emit(speed / 1024)
+                    self.speed_signal.emit(speed / 1024)  # Convert to KB/s
+
         self.status_signal.emit("Download completed")
         self.log_signal.emit(f"Download completed: {output_path}")
-
 
 class MainWindow(QtWidgets.QMainWindow):
     """
