@@ -752,6 +752,7 @@ class MainWindow(QtWidgets.QMainWindow):
 # --------------------- End of GUI Code ---------------------
 
 def main():
+    QtCore.QCoreApplication.setAttribute(QtCore.Qt.AA_EnableHighDpiScaling)
     app = QtWidgets.QApplication(sys.argv)
     default_font = QFont("Roboto" if "Roboto" in QFontDatabase().families() else "Segoe UI", 10)
     app.setFont(default_font)
