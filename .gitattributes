@@ -1,0 +1,2 @@
+.github/workflows/*.yml text eol=lf
+*.sh text eol=lf
