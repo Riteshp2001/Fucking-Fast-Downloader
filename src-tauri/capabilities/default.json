@@ -1,0 +1,47 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Capability for the main window",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "core:default",
+    "core:window:allow-start-dragging",
+    "core:window:allow-close",
+    "core:window:allow-destroy",
+    "core:window:allow-minimize",
+    "core:window:allow-unminimize",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-show",
+    "core:window:allow-hide",
+    "core:window:allow-set-focus",
+    "opener:default",
+    "store:default",
+    "dialog:default",
+    "notification:default",
+    "process:default",
+    "os:default",
+    "fs:allow-remove",
+    "fs:allow-exists",
+    {
+      "identifier": "fs:scope",
+      "allow": [
+        { "path": "$APPDATA/**" },
+        { "path": "$APPLOG/**" },
+        { "path": "$TEMP/**" }
+      ]
+    },
+    "clipboard-manager:allow-read-text",
+    "autostart:default",
+    "updater:default",
+    "deep-link:default",
+    "deep-link:allow-register",
+    "deep-link:allow-unregister",
+    "deep-link:allow-is-registered",
+    "locale:default",
+    "log:default",
+    "sql:default",
+    "sql:allow-execute"
+  ]
+}

@@ -1,8 +1,0 @@
-# Core Dependencies
-PyQt5
-qt-material
-requests
-beautifulsoup4
-
-# Optional (For Building)
-pyinstaller

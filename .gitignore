@@ -1,40 +1,56 @@
-# Python Bytecode files
-__pycache__/
-*.pyc
-*.pyo
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
 
-# Environment variables
-.env
+# testing
+/coverage
 
-# Virtual environment
-venv/
-env/
+# next.js
+/.next/
+/out/
 
-# IDE configurations
-.idea/
-.vscode/
+# production
+/build
 
-# PyCharm specific
-.idea/
+# Tauri
+src-tauri/target/
+src-tauri/.cargo/
 
-# Jupyter Notebook checkpoints
-.ipynb_checkpoints/
-
-# Mac OS generated files
+# misc
 .DS_Store
-
-# Windows system files
+*.pem
 Thumbs.db
+*.swp
+*.swo
 
-# Log files
-*.log
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
 
-# PyInstaller
-dist/
-build/
-downloads/
-*.spec
+# env files
+.env*
+!.env.example
 
-# Distribution / packaging
-*.egg-info/
-*.egg
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# IDE
+.vscode/settings.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?

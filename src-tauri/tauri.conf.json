@@ -1,0 +1,102 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "FF Downloader",
+  "identifier": "com.ff-downloader.app",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:3000",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../out"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "FF Downloader",
+        "width": 1100,
+        "height": 720,
+        "minWidth": 400,
+        "minHeight": 300,
+        "transparent": true,
+        "decorations": false,
+        "visible": false,
+        "center": true,
+        "shadow": false
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; connect-src 'self' ipc: http://ipc.localhost; img-src 'self' asset: http://asset.localhost data: blob:; media-src 'self' asset: http://asset.localhost data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
+    },
+    "macOSPrivateApi": true
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "publisher": "Ritesh Pandit",
+    "copyright": "Copyright © 2025 Ritesh Pandit. All rights reserved.",
+    "createUpdaterArtifacts": false,
+    "externalBin": ["binaries/motrix-next-engine"],
+    "resources": [
+      "binaries/aria2.conf",
+      "data/ed2k-bootstrap/server.met",
+      "data/ed2k-bootstrap/nodes.dat",
+      "data/bt-peer-blocklist.txt",
+      "data/dbip-country-lite.mmdb"
+    ],
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"],
+    "fileAssociations": [
+      {
+        "ext": ["torrent"],
+        "name": "BitTorrent",
+        "mimeType": "application/x-bittorrent",
+        "description": "BitTorrent File",
+        "role": "Viewer"
+      }
+    ],
+    "macOS": {
+      "signingIdentity": "-"
+    },
+    "windows": {
+      "nsis": {
+        "installerIcon": "icons/icon.ico",
+        "installMode": "both",
+        "displayLanguageSelector": true,
+        "languages": [
+          "English",
+          "German",
+          "French",
+          "Spanish",
+          "Japanese",
+          "Korean",
+          "SimpChinese",
+          "TradChinese",
+          "Russian",
+          "Hindi",
+          "Italian",
+          "Portuguese",
+          "Polish",
+          "Turkish",
+          "Vietnamese",
+          "Thai",
+          "Indonesian",
+          "Dutch",
+          "Arabic"
+        ]
+      }
+    },
+    "linux": {
+      "deb": {},
+      "rpm": {}
+    }
+  },
+  "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": ["magnet", "ffdownloader"]
+      }
+    },
+    "sql": {
+      "preload": ["sqlite:history.db"]
+    }
+  }
+}

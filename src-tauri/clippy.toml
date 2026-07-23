@@ -1,0 +1,4 @@
+# Allow .unwrap() in test code — idiomatic Rust testing style.
+# Production code remains strictly denied via [lints.clippy] in Cargo.toml.
+# See: https://doc.rust-lang.org/clippy/lint_configuration.html#allow-unwrap-in-tests
+allow-unwrap-in-tests = true

@@ -1,0 +1,230 @@
+@import "tailwindcss";
+
+@theme inline {
+  --color-surface: var(--md-sys-color-surface);
+  --color-surface-dim: var(--md-sys-color-surface-dim);
+  --color-surface-bright: var(--md-sys-color-surface-bright);
+  --color-surface-container-lowest: var(--md-sys-color-surface-container-lowest);
+  --color-surface-container-low: var(--md-sys-color-surface-container-low);
+  --color-surface-container: var(--md-sys-color-surface-container);
+  --color-surface-container-high: var(--md-sys-color-surface-container-high);
+  --color-surface-container-highest: var(--md-sys-color-surface-container-highest);
+  --color-surface-variant: var(--md-sys-color-surface-variant);
+  --color-on-surface: var(--md-sys-color-on-surface);
+  --color-on-surface-variant: var(--md-sys-color-on-surface-variant);
+  --color-primary: var(--md-sys-color-primary);
+  --color-on-primary: var(--md-sys-color-on-primary);
+  --color-primary-container: var(--md-sys-color-primary-container);
+  --color-on-primary-container: var(--md-sys-color-on-primary-container);
+  --color-secondary: var(--md-sys-color-secondary);
+  --color-on-secondary: var(--md-sys-color-on-secondary);
+  --color-secondary-container: var(--md-sys-color-secondary-container);
+  --color-on-secondary-container: var(--md-sys-color-on-secondary-container);
+  --color-tertiary: var(--md-sys-color-tertiary);
+  --color-on-tertiary: var(--md-sys-color-on-tertiary);
+  --color-tertiary-container: var(--md-sys-color-tertiary-container);
+  --color-on-tertiary-container: var(--md-sys-color-on-tertiary-container);
+  --color-error: var(--md-sys-color-error);
+  --color-on-error: var(--md-sys-color-on-error);
+  --color-error-container: var(--md-sys-color-error-container);
+  --color-on-error-container: var(--md-sys-color-on-error-container);
+  --color-outline: var(--md-sys-color-outline);
+  --color-outline-variant: var(--md-sys-color-outline-variant);
+  --font-sans: var(--md-sys-typescale-body-large-font);
+  --font-mono: "Geist Mono", ui-monospace, monospace;
+}
+
+:root {
+  --md-ref-palette-primary0: #000000;
+  --md-ref-palette-primary10: #00201e;
+  --md-ref-palette-primary20: #003733;
+  --md-ref-palette-primary30: #005048;
+  --md-ref-palette-primary40: #006a60;
+  --md-ref-palette-primary50: #008578;
+  --md-ref-palette-primary60: #00a191;
+  --md-ref-palette-primary70: #00bfab;
+  --md-ref-palette-primary80: #2dd4bf;
+  --md-ref-palette-primary90: #6ff0db;
+  --md-ref-palette-primary95: #a1ffec;
+  --md-ref-palette-primary99: #f4fffa;
+  --md-ref-palette-primary100: #ffffff;
+  --md-ref-palette-secondary10: #0e0432;
+  --md-ref-palette-secondary20: #1e0546;
+  --md-ref-palette-secondary30: #35246e;
+  --md-ref-palette-secondary40: #4d3c89;
+  --md-ref-palette-secondary50: #6655a4;
+  --md-ref-palette-secondary60: #806fbf;
+  --md-ref-palette-secondary70: #9b89db;
+  --md-ref-palette-secondary80: #a78bfa;
+  --md-ref-palette-secondary90: #d4c4ff;
+  --md-ref-palette-secondary95: #ebe1ff;
+  --md-ref-palette-secondary99: #fffbff;
+  --md-ref-palette-tertiary10: #241a00;
+  --md-ref-palette-tertiary20: #3d2d00;
+  --md-ref-palette-tertiary30: #594200;
+  --md-ref-palette-tertiary40: #775900;
+  --md-ref-palette-tertiary50: #967100;
+  --md-ref-palette-tertiary60: #b78a00;
+  --md-ref-palette-tertiary70: #d9a400;
+  --md-ref-palette-tertiary80: #fbbf24;
+  --md-ref-palette-tertiary90: #ffe082;
+  --md-ref-palette-tertiary95: #ffefc3;
+  --md-ref-palette-tertiary99: #fffbff;
+  --md-ref-palette-error10: #410002;
+  --md-ref-palette-error20: #54001a;
+  --md-ref-palette-error30: #7f0028;
+  --md-ref-palette-error40: #a90038;
+  --md-ref-palette-error50: #d42f4d;
+  --md-ref-palette-error60: #f55c5c;
+  --md-ref-palette-error70: #f87171;
+  --md-ref-palette-error80: #ffb3ab;
+  --md-ref-palette-error90: #ffd5d5;
+  --md-ref-palette-error95: #ffeae6;
+  --md-ref-palette-neutral0: #000000;
+  --md-ref-palette-neutral4: #0a0a0c;
+  --md-ref-palette-neutral6: #0f0f12;
+  --md-ref-palette-neutral10: #1a1a1e;
+  --md-ref-palette-neutral12: #1e1e22;
+  --md-ref-palette-neutral17: #28282d;
+  --md-ref-palette-neutral20: #2e2e33;
+  --md-ref-palette-neutral22: #333338;
+  --md-ref-palette-neutral24: #37373c;
+  --md-ref-palette-neutral30: #45454a;
+  --md-ref-palette-neutral40: #5d5d62;
+  --md-ref-palette-neutral50: #76767b;
+  --md-ref-palette-neutral60: #909094;
+  --md-ref-palette-neutral70: #ababaf;
+  --md-ref-palette-neutral80: #c7c6ca;
+  --md-ref-palette-neutral90: #e3e2e6;
+  --md-ref-palette-neutral95: #f1f0f4;
+  --md-ref-palette-neutral98: #faf9fd;
+  --md-ref-palette-neutral100: #ffffff;
+  --md-ref-palette-neutral-variant30: #414851;
+  --md-ref-palette-neutral-variant50: #6b717a;
+  --md-ref-palette-neutral-variant60: #858b94;
+  --md-ref-palette-neutral-variant80: #c2c7d0;
+  --md-ref-palette-neutral-variant90: #dee3ec;
+  --md-ref-palette-neutral-variant95: #eef1fa;
+  --md-ref-palette-neutral-variant99: #fffbff;
+
+  --md-sys-color-background: var(--md-ref-palette-neutral6);
+  --md-sys-color-on-background: var(--md-ref-palette-neutral90);
+  --md-sys-color-surface: var(--md-ref-palette-neutral6);
+  --md-sys-color-surface-dim: var(--md-ref-palette-neutral6);
+  --md-sys-color-surface-bright: var(--md-ref-palette-neutral24);
+  --md-sys-color-surface-container-lowest: var(--md-ref-palette-neutral4);
+  --md-sys-color-surface-container-low: var(--md-ref-palette-neutral10);
+  --md-sys-color-surface-container: var(--md-ref-palette-neutral12);
+  --md-sys-color-surface-container-high: var(--md-ref-palette-neutral17);
+  --md-sys-color-surface-container-highest: var(--md-ref-palette-neutral22);
+  --md-sys-color-on-surface: var(--md-ref-palette-neutral90);
+  --md-sys-color-on-surface-variant: var(--md-ref-palette-neutral-variant80);
+  --md-sys-color-primary: var(--md-ref-palette-primary80);
+  --md-sys-color-on-primary: var(--md-ref-palette-primary20);
+  --md-sys-color-primary-container: var(--md-ref-palette-primary30);
+  --md-sys-color-on-primary-container: var(--md-ref-palette-primary90);
+  --md-sys-color-secondary: var(--md-ref-palette-secondary80);
+  --md-sys-color-on-secondary: var(--md-ref-palette-secondary20);
+  --md-sys-color-secondary-container: var(--md-ref-palette-secondary30);
+  --md-sys-color-on-secondary-container: var(--md-ref-palette-secondary90);
+  --md-sys-color-tertiary: var(--md-ref-palette-tertiary80);
+  --md-sys-color-on-tertiary: var(--md-ref-palette-tertiary20);
+  --md-sys-color-tertiary-container: var(--md-ref-palette-tertiary30);
+  --md-sys-color-on-tertiary-container: var(--md-ref-palette-tertiary90);
+  --md-sys-color-error: var(--md-ref-palette-error80);
+  --md-sys-color-on-error: var(--md-ref-palette-error20);
+  --md-sys-color-error-container: var(--md-ref-palette-error30);
+  --md-sys-color-on-error-container: var(--md-ref-palette-error90);
+  --md-sys-color-outline: var(--md-ref-palette-neutral-variant60);
+  --md-sys-color-outline-variant: var(--md-ref-palette-neutral-variant30);
+  --md-sys-color-scrim: var(--md-ref-palette-neutral0);
+  --md-sys-color-shadow: var(--md-ref-palette-neutral0);
+  --md-sys-color-inverse-surface: var(--md-ref-palette-neutral90);
+  --md-sys-color-inverse-on-surface: var(--md-ref-palette-neutral20);
+  --md-sys-color-inverse-primary: var(--md-ref-palette-primary40);
+
+  --md-sys-shape-corner-none: 0px;
+  --md-sys-shape-corner-extra-small: 4px;
+  --md-sys-shape-corner-small: 8px;
+  --md-sys-shape-corner-medium: 12px;
+  --md-sys-shape-corner-large: 16px;
+  --md-sys-shape-corner-extra-large: 28px;
+  --md-sys-shape-corner-full: 9999px;
+
+  /* Emil Kowalski Design Engineering Easing Curves */
+  --ease-emil-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-emil-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-emil-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--md-sys-color-outline-variant) transparent;
+}
+
+body {
+  background: var(--md-sys-color-surface);
+  color: var(--md-sys-color-on-surface);
+  font-family: var(--md-sys-typescale-body-large-font);
+  font-size: var(--md-sys-typescale-body-large-size);
+  line-height: var(--md-sys-typescale-body-large-line-height);
+}
+
+/* Micro-interaction & Keyframe Animations (Emil Kowalski Design Principles) */
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slide-up-emil {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes scale-in-emil {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes pulse-subtle {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.7; transform: scale(0.97); }
+}
+
+.animate-slide-up-emil {
+  animation: slide-up-emil 220ms var(--ease-emil-out) forwards;
+}
+
+.animate-scale-in-emil {
+  animation: scale-in-emil 180ms var(--ease-emil-out) forwards;
+}
+
+/* Button & Card Micro-Interactions */
+.active-press {
+  transition: transform 120ms var(--ease-emil-out), background-color 150ms ease, border-color 150ms ease;
+}
+.active-press:active {
+  transform: scale(0.96);
+}
+
+.hover-lift {
+  transition: transform 180ms var(--ease-emil-out), box-shadow 180ms ease, background-color 150ms ease;
+}
+.hover-lift:hover {
+  transform: translateY(-1px);
+}
+.hover-lift:active {
+  transform: translateY(0) scale(0.98);
+}
