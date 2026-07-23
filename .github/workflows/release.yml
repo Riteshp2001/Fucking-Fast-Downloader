@@ -36,6 +36,11 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
       - name: Install Linux deps
         if: matrix.os == 'ubuntu-latest'
         run: |
@@ -48,9 +53,6 @@ jobs:
 
       - name: Build Tauri app
         run: pnpm tauri:build
-        env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -96,4 +98,4 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release upload ${{ github.ref_name }} bundle-*/* --clobber
+          find bundle-* -type f -print0 | xargs -0 gh release upload ${{ github.ref_name }} --clobber
