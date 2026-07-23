@@ -87,6 +87,13 @@ jobs:
           echo "EOF" >> $GITHUB_OUTPUT
         shell: bash
 
+      - name: Delete existing release if present
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release delete ${{ github.ref_name }} --yes --cleanup-tag 2>/dev/null || true
+        shell: bash
+
       - name: Create release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -94,10 +101,15 @@ jobs:
           gh release create ${{ github.ref_name }} \
             --title "FF Downloader ${{ github.ref_name }}" \
             --notes "${{ steps.notes.outputs.body }}" \
-            --verify-tag || true
+            --verify-tag
+        shell: bash
 
-      - name: Upload artifacts to release
+      - name: Upload release assets (installers only)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          find bundle-* -type f -print0 | xargs -0 gh release upload ${{ github.ref_name }} --clobber
+          find bundle-* \( -name '*.dmg' -o -name '*.app.tar.gz' -o -name '*.AppImage' \
+            -o -name '*.deb' -o -name '*.rpm' -o -name '*.msi' -o -name '*.msi.zip' \
+            -o -name '*.exe' -o -name '*.sig' -o -name 'latest.json' -o -name '*.tar.gz' \) \
+            -type f -print0 | xargs -0 gh release upload ${{ github.ref_name }} --overwrite
+        shell: bash
