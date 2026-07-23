@@ -91,7 +91,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDFFNTVCNkE4NjQxNjA5MDIKUldRQ0NSWmtxTFpWSGgyK2piaDR5RjUrU3N4WS83bGM0V2g0V3AyMSsvTU4vQXJMU2NnaEp5VWYK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEI4Q0U2MDA1N0I0QUVFRApSV1R0cnJSWEFPYU1DODRsaXZBKzNROGFBRWI2Qk5UQzdVSjM5cElWYnQ5VjNjMzY1MXN3QndBMQo=",
       "endpoints": ["https://github.com/Riteshp2001/Fucking-Fast-Downloader/releases/latest/download/latest.json"]
     },
     "deep-link": {
