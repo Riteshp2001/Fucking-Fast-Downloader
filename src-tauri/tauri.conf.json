@@ -34,7 +34,7 @@
     "targets": "all",
     "publisher": "Ritesh Pandit",
     "copyright": "Copyright © 2025 Ritesh Pandit. All rights reserved.",
-    "createUpdaterArtifacts": false,
+    "createUpdaterArtifacts": true,
     "externalBin": ["binaries/motrix-next-engine"],
     "resources": [
       "binaries/aria2.conf",
@@ -90,6 +90,10 @@
     }
   },
   "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDFFNTVCNkE4NjQxNjA5MDIKUldRQ0NSWmtxTFpWSGgyK2piaDR5RjUrU3N4WS83bGM0V2g0V3AyMSsvTU4vQXJMU2NnaEp5VWYK",
+      "endpoints": ["https://github.com/Riteshp2001/Fucking-Fast-Downloader/releases/latest/download/latest.json"]
+    },
     "deep-link": {
       "desktop": {
         "schemes": ["magnet", "ffdownloader"]

@@ -18,6 +18,10 @@
 # production
 /build
 
+# Tauri signing keys
+updater-key
+updater-key.pub
+
 # Tauri
 src-tauri/target/
 src-tauri/.cargo/

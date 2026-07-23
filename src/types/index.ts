@@ -64,3 +64,17 @@ export interface DownloadTask extends Aria2Task {
   etaFormatted: string;
   sizeFormatted: string;
 }
+
+export interface UpdateMetadata {
+  version: string;
+  body?: string;
+  date?: string;
+  channel: string;
+  requestedChannel: string;
+  isRollback: boolean;
+}
+
+export type UpdateProgressPayload =
+  | { event: "Started"; data: { content_length: number } }
+  | { event: "Progress"; data: { chunk_length: number; downloaded: number } }
+  | { event: "Finished"; data: null };

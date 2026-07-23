@@ -40,6 +40,7 @@ pub fn tray_icon_image() -> tauri::image::Image<'static> {
 /// monochrome mask correctly on light, dark, and highlighted menu bar states.
 /// Any path that re-sets the icon must restore that flag immediately afterward,
 /// otherwise AppKit treats the bitmap as a normal white image.
+#[allow(dead_code)]
 pub fn refresh_tray_icon(tray: &TrayIcon<tauri::Wry>) -> tauri::Result<()> {
     let icon = tray_icon_image();
     tray.set_icon_with_as_template(Some(icon), TRAY_ICON_IS_TEMPLATE)
