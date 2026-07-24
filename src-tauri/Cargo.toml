@@ -1,6 +1,6 @@
 [package]
 name = "ff-downloader"
-version = "2.0.0"
+version = "2.0.1"
 description = "FF Downloader — Fast cross-platform download manager"
 authors = ["Ritesh Pandit"]
 edition = "2021"
@@ -64,6 +64,7 @@ rfc2047-decoder = "1.1"
 strip-ansi-escapes = "0.2.1"
 tempfile = "3"
 scraper = "0.22"
+regex = "1"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = [

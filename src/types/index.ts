@@ -44,6 +44,7 @@ export interface ResolvedLink {
   file_id?: string;
   file_name?: string;
   source_name?: string;
+  file_size?: string;
   success: boolean;
   error?: string;
 }

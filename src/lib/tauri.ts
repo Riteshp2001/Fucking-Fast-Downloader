@@ -53,10 +53,11 @@ export const scraperFind = async (url: string): Promise<ScrapedItem[]> => {
     const resolved = result.resolved_links[index];
     const name = resolved?.file_name || resolved?.source_name || resolved?.file_id || `Part ${index + 1}`;
     const directUrl = resolved?.direct_url;
+    const sizeText = resolved?.file_size || (directUrl ? 'Ready to download' : 'Could not resolve');
     return {
       link: directUrl || link,
       name,
-      size: directUrl ? 'Ready to download' : 'Could not resolve',
+      size: sizeText,
       gid: resolved?.file_id || link,
       success: Boolean(resolved?.success && directUrl),
       error: resolved?.error || (!directUrl ? 'No direct download URL was returned.' : undefined),

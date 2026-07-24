@@ -1,6 +1,6 @@
 {
   "name": "ff-downloader",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "private": true,
   "description": "A modern, fast download manager built with Next.js and Tauri - supporting HTTP, BitTorrent, Metalink, and more",
   "author": {

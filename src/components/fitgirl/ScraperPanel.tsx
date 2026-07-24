@@ -241,9 +241,30 @@ export default function ScraperPanel() {
 
       {/* Error Message */}
       {error && (
-        <div className="p-3 bg-[var(--md-sys-color-error-container)] text-[var(--md-sys-color-on-error-container)] text-xs font-medium rounded-xl mb-3 flex items-center gap-2 animate-scale-in-emil">
-          <CloseCircle size={16} className="shrink-0" />
-          {error}
+        <div className="p-3 bg-[var(--md-sys-color-error-container)] text-[var(--md-sys-color-on-error-container)] text-xs font-medium rounded-xl mb-3 animate-scale-in-emil">
+          <div className="flex items-center gap-2 mb-2">
+            <CloseCircle size={16} className="shrink-0" />
+            <span className="font-bold">
+              {error.includes('403') || error.includes('Forbidden')
+                ? 'Cloudflare Blocked the Request'
+                : error.includes('timeout') || error.includes('Network')
+                  ? 'Connection Timed Out'
+                  : 'Scraping Failed'}
+            </span>
+          </div>
+          <p className="text-[11px] opacity-80 mb-2.5 leading-relaxed">
+            {error.includes('403') || error.includes('Forbidden')
+              ? 'The site\'s Cloudflare protection blocked the request. This can happen intermittently — retrying usually works.'
+              : error}
+          </p>
+          <button
+            onClick={() => handleFind()}
+            disabled={scraping || !link.trim()}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-bold bg-[var(--md-sys-color-on-error-container)] text-[var(--md-sys-color-error-container)] hover:opacity-90 active-press disabled:opacity-40 transition-all cursor-pointer"
+          >
+            <Refresh size={12} />
+            Retry Scrape
+          </button>
         </div>
       )}
 
