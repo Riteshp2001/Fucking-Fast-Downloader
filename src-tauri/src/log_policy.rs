@@ -2,11 +2,11 @@ use std::path::Path;
 
 pub(crate) const MAX_LOG_FILE_SIZE: u64 = 50 * 1024 * 1024;
 pub(crate) const MAX_LOG_FILES: usize = 1;
-pub(crate) const MOTRIX_LOG_FILE: &str = "ff-downloader.log";
+pub(crate) const APP_LOG_FILE: &str = "ff-downloader.log";
 pub(crate) const ARIA2_LOG_FILE: &str = "aria2-next.log";
 
 pub(crate) fn is_managed_active_log_file(name: &str) -> bool {
-    matches!(name, MOTRIX_LOG_FILE | ARIA2_LOG_FILE)
+    matches!(name, APP_LOG_FILE | ARIA2_LOG_FILE)
 }
 
 fn has_numeric_suffix(name: &str, prefix: &str) -> bool {

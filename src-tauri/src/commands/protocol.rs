@@ -965,7 +965,10 @@ mod tests {
     #[test]
     fn url_associations_path_under_capabilities() {
         let path = win_registry::url_associations_path();
-        assert_eq!(path, "Software\\FFDownloader\\Capabilities\\URLAssociations");
+        assert_eq!(
+            path,
+            "Software\\FFDownloader\\Capabilities\\URLAssociations"
+        );
     }
 
     #[test]

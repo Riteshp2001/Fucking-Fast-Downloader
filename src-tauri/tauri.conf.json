@@ -33,9 +33,9 @@
     "active": true,
     "targets": "all",
     "publisher": "Ritesh Pandit",
-    "copyright": "Copyright © 2025 Ritesh Pandit. All rights reserved.",
+    "copyright": "Copyright © 2026 Ritesh Pandit. All rights reserved.",
     "createUpdaterArtifacts": true,
-    "externalBin": ["binaries/motrix-next-engine"],
+    "externalBin": ["binaries/ff-downloader-engine"],
     "resources": [
       "binaries/aria2.conf",
       "data/ed2k-bootstrap/server.met",
@@ -53,9 +53,7 @@
         "role": "Viewer"
       }
     ],
-    "macOS": {
-      "signingIdentity": "-"
-    },
+    "macOS": {},
     "windows": {
       "nsis": {
         "installerIcon": "icons/icon.ico",

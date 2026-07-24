@@ -1,10 +1,10 @@
 'use client';
 
-import React, { useState, useCallback } from 'react';
+import React, { useState } from 'react';
 import { addUri } from '@/lib/tauri';
 import {
   CloseCircle, AltArrowDown, AltArrowRight, AddSquare,
-  Global, TrashBinMinimalistic, ClipboardText, CheckCircle
+  TrashBinMinimalistic, ClipboardText, CheckCircle
 } from '@solar-icons/react';
 
 interface AddTaskDialogProps {
@@ -19,6 +19,10 @@ interface ParsedUrl {
 }
 
 function parseUrlHost(url: string): { isValid: boolean; host: string } {
+  if (url.toLowerCase().startsWith('magnet:?')) {
+    return { isValid: true, host: 'magnet' };
+  }
+
   try {
     const parsed = new URL(url);
     return { isValid: true, host: parsed.hostname };
@@ -29,8 +33,8 @@ function parseUrlHost(url: string): { isValid: boolean; host: string } {
 
 function getHostBadge(host: string) {
   const h = host.toLowerCase();
-  if (h.includes('fuckingfast')) {
-    return <span className="text-[9px] font-mono px-1.5 py-0.5 rounded-full bg-teal-500/15 text-teal-400 font-bold border border-teal-500/30 shrink-0">⚡ FuckingFast</span>;
+  if (h === 'magnet') {
+    return <span className="text-[9px] font-mono px-1.5 py-0.5 rounded-full bg-purple-500/15 text-purple-400 font-bold border border-purple-500/30 shrink-0">Magnet</span>;
   }
   if (h.includes('magnet') || h.includes('torrent')) {
     return <span className="text-[9px] font-mono px-1.5 py-0.5 rounded-full bg-purple-500/15 text-purple-400 font-bold border border-purple-500/30 shrink-0">🧲 Magnet</span>;
@@ -85,7 +89,7 @@ export default function AddTaskDialog({ isOpen, onClose }: AddTaskDialogProps) {
           return text.trim();
         });
       }
-    } catch (e) {
+    } catch {
       // Clipboard unavailable in Tauri — handled by platform paste
     }
   };
@@ -169,7 +173,7 @@ export default function AddTaskDialog({ isOpen, onClose }: AddTaskDialogProps) {
               value={urlsText}
               onChange={(e) => setUrlsText(e.target.value)}
               className="w-full bg-[var(--md-sys-color-surface-container-high)] border border-[var(--md-sys-color-outline-variant)]/60 rounded-xl p-3 text-xs font-mono text-[var(--md-sys-color-on-surface)] focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500/30 transition-all resize-none min-h-[90px] placeholder:text-[var(--md-sys-color-on-surface-variant)]/60"
-              placeholder={"https://fuckingfast.co/download/...\nhttps://fuckingfast.co/download/...\nhttps://example.com/file.zip"}
+              placeholder={"https://example.com/file.zip\nmagnet:?xt=urn:btih:...\nhttps://example.com/file.torrent"}
             />
           </div>
 

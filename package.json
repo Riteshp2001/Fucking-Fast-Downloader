@@ -1,12 +1,12 @@
 {
   "name": "ff-downloader",
-  "version": "2.0.1",
+  "version": "2.1.0",
   "private": true,
   "description": "A modern, fast download manager built with Next.js and Tauri - supporting HTTP, BitTorrent, Metalink, and more",
   "author": {
     "name": "Ritesh Pandit",
     "email": "ritesh@example.com",
-    "url": "https://github.com/anomalyco"
+    "url": "https://github.com/Riteshp2001"
   },
   "license": "MIT",
   "keywords": [
@@ -20,12 +20,12 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/anomalyco/Fucking-Fast-Downloader.git"
+    "url": "git+https://github.com/Riteshp2001/Fucking-Fast-Downloader.git"
   },
   "bugs": {
-    "url": "https://github.com/anomalyco/Fucking-Fast-Downloader/issues"
+    "url": "https://github.com/Riteshp2001/Fucking-Fast-Downloader/issues"
   },
-  "homepage": "https://github.com/anomalyco/Fucking-Fast-Downloader#readme",
+  "homepage": "https://github.com/Riteshp2001/Fucking-Fast-Downloader#readme",
   "engines": {
     "node": ">=20.0.0",
     "npm": ">=10.0.0"

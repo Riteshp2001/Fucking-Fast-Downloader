@@ -26,6 +26,12 @@ updater-key.pub
 src-tauri/target/
 src-tauri/.cargo/
 
+# Flatpak build products
+flatpak/build/
+flatpak/repo/
+flatpak/ff-downloader.deb
+/dist/
+
 # misc
 .DS_Store
 *.pem

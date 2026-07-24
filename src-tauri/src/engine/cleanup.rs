@@ -4,10 +4,10 @@
 /// killed when reclaiming the RPC port — never arbitrary processes that
 /// happen to occupy the same port.
 ///
-/// Matches only the current `motrix-next-engine` sidecar process.
+/// Matches only the current `ff-downloader-engine` sidecar process.
 ///
 fn is_supported_engine_process(comm: &str) -> bool {
-    comm.contains("motrix-next-engine")
+    comm.contains("ff-downloader-engine")
 }
 
 #[cfg(unix)]
@@ -163,19 +163,19 @@ mod tests {
     use super::*;
 
     #[test]
-    fn is_supported_engine_process_matches_motrix_next_engine() {
-        assert!(is_supported_engine_process("motrix-next-engine"));
+    fn is_supported_engine_process_matches_the_product_engine() {
+        assert!(is_supported_engine_process("ff-downloader-engine"));
         assert!(is_supported_engine_process(
-            "/Applications/FFDownloader.app/Contents/Resources/motrix-next-engine"
+            "/Applications/FFDownloader.app/Contents/Resources/ff-downloader-engine"
         ));
         assert!(is_supported_engine_process(
-            "/usr/bin/motrix-next-engine --conf-path=/usr/lib/FFDownloader/binaries/aria2.conf"
+            "/usr/bin/ff-downloader-engine --conf-path=/usr/lib/FFDownloader/binaries/aria2.conf"
         ));
     }
 
     #[test]
     fn is_supported_engine_process_does_not_trust_truncated_comm_names() {
-        assert!(!is_supported_engine_process("motrix-next-eng"));
+        assert!(!is_supported_engine_process("ff-downloader-eng"));
     }
 
     #[test]

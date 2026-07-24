@@ -23,7 +23,7 @@ export default function TitleBar() {
       } else {
         window.open(url, '_blank', 'noopener,noreferrer');
       }
-    } catch (err) {
+    } catch {
       window.open(url, '_blank', 'noopener,noreferrer');
     }
   };

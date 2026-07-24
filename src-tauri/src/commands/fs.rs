@@ -1,7 +1,7 @@
 use crate::engine::{valid_aria2_log_level, DEFAULT_ARIA2_LOG_LEVEL};
 use crate::error::AppError;
 use crate::log_policy::{
-    is_managed_active_log_file, remove_legacy_log_files, ARIA2_LOG_FILE, MOTRIX_LOG_FILE,
+    is_managed_active_log_file, remove_legacy_log_files, APP_LOG_FILE, ARIA2_LOG_FILE,
 };
 use serde_json::Value;
 use std::path::Path;
@@ -9,7 +9,7 @@ use tauri::AppHandle;
 use tauri::Manager;
 
 fn diagnostic_log_zip_path(name: &str) -> Option<String> {
-    if name == MOTRIX_LOG_FILE {
+    if name == APP_LOG_FILE {
         Some(format!("ff-downloader/{name}"))
     } else if name == ARIA2_LOG_FILE {
         Some(format!("aria2-next/{name}"))
@@ -394,10 +394,7 @@ mod export_tests {
 
         clear_managed_log_files_in_dir(dir.path()).expect("clear logs");
 
-        assert_eq!(
-            std::fs::metadata(&app_log).expect("app metadata").len(),
-            0
-        );
+        assert_eq!(std::fs::metadata(&app_log).expect("app metadata").len(), 0);
         assert_eq!(std::fs::metadata(&aria2).expect("aria2 metadata").len(), 0);
         assert!(!rotated.exists());
         assert!(!current_rotated.exists());

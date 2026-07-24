@@ -73,7 +73,7 @@ export default function TaskList({ filter, onOpenAddDialog }: TaskListProps) {
             </h3>
             <p className="text-xs text-[var(--md-sys-color-on-surface-variant)] max-w-xs mb-5 leading-relaxed">
               {filter === 'all'
-                ? 'Add your first download task or use the FitGirl scraper to fetch links.'
+                ? 'Add your first download task with a direct URL, magnet URI, or torrent file.'
                 : `No ${filter} downloads right now.`}
             </p>
 

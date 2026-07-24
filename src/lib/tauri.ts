@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
-import { Aria2GlobalStat, Aria2Task, ScrapeResult, ResolvedLink, ScrapedItem } from '@/types';
+import { Aria2GlobalStat, Aria2Task } from '@/types';
 
 export const isTauri = (): boolean => {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
@@ -34,42 +34,6 @@ export const unpauseTask = async (gid: string) => isTauri() && invoke('aria2_unp
 export const removeTask = async (gid: string) => isTauri() && invoke('aria2_force_remove', { gid });
 export const pauseAll = async () => isTauri() && invoke('aria2_pause_all');
 export const unpauseAll = async () => isTauri() && invoke('aria2_unpause_all');
-
-// Scraper commands
-export const scrapeFitgirlPage = async (url: string): Promise<ScrapeResult | null> =>
-  isTauri() ? invoke<ScrapeResult>('scrape_fitgirl_page', { url }) : null;
-
-export const resolveFuckingfastLink = async (link: string): Promise<ResolvedLink | null> =>
-  isTauri() ? invoke<ResolvedLink>('resolve_fuckingfast_link', { link }) : null;
-
-export const scrapeAndResolve = async (url: string): Promise<ScrapeResult | null> =>
-  isTauri() ? invoke<ScrapeResult>('scrape_and_resolve', { url }) : null;
-
-export const scraperFind = async (url: string): Promise<ScrapedItem[]> => {
-  if (!isTauri()) throw new Error('The scraper is available only in the desktop app.');
-
-  const result = await invoke<ScrapeResult>('scrape_and_resolve', { url });
-  return result.file_links.map((link, index) => {
-    const resolved = result.resolved_links[index];
-    const name = resolved?.file_name || resolved?.source_name || resolved?.file_id || `Part ${index + 1}`;
-    const directUrl = resolved?.direct_url;
-    const sizeText = resolved?.file_size || (directUrl ? 'Ready to download' : 'Could not resolve');
-    return {
-      link: directUrl || link,
-      name,
-      size: sizeText,
-      gid: resolved?.file_id || link,
-      success: Boolean(resolved?.success && directUrl),
-      error: resolved?.error || (!directUrl ? 'No direct download URL was returned.' : undefined),
-    };
-  });
-};
-
-export const scraperAddTask = async (item: ScrapedItem) => {
-  if (!isTauri()) return;
-  if (!item.success || !item.link) throw new Error(item.error || 'This link could not be resolved.');
-  await invoke('aria2_add_uri', { uris: [item.link], options: { out: item.name } });
-};
 
 // Config commands
 export const getSystemConfig = async (): Promise<Record<string, unknown>> =>

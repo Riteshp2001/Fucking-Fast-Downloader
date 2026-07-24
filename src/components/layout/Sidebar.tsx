@@ -9,7 +9,6 @@ import {
   Bolt,
   CheckCircle,
   CloseCircle,
-  Link,
   Settings,
   InfoCircle,
   AltArrowDown,
@@ -26,7 +25,6 @@ const navItems = [
   { id: 'active', label: 'Active', icon: Bolt },
   { id: 'completed', label: 'Completed', icon: CheckCircle },
   { id: 'errors', label: 'Errors', icon: CloseCircle },
-  { id: 'scraper', label: 'FitGirl Scraper', icon: Link },
   { id: 'preferences', label: 'Preferences', icon: Settings },
   { id: 'about', label: 'About', icon: InfoCircle },
 ];

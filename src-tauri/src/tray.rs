@@ -19,7 +19,7 @@ use tauri::{
 #[cfg(target_os = "macos")]
 pub const TRAY_ICON_BYTES: &[u8] = include_bytes!("../icons/tray-icon@2x.png");
 #[cfg(not(target_os = "macos"))]
-pub const TRAY_ICON_BYTES: &[u8] = include_bytes!("../icons/tray-icon-color.png");
+pub const TRAY_ICON_BYTES: &[u8] = include_bytes!("../icons/128x128.png");
 
 /// Whether the current platform expects the tray icon to be rendered as an
 /// AppKit template image.

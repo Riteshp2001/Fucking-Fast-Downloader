@@ -24,7 +24,7 @@ export default function AboutPanel() {
       } else {
         window.open(url, '_blank', 'noopener,noreferrer');
       }
-    } catch (err) {
+    } catch {
       window.open(url, '_blank', 'noopener,noreferrer');
     }
   };
@@ -59,11 +59,11 @@ export default function AboutPanel() {
                   Fucking Fast Downloader
                 </h1>
                 <span className="text-[10px] font-mono font-bold px-2.5 py-0.5 rounded-full bg-[var(--md-sys-color-surface-container-high)] text-[var(--md-sys-color-primary)] border border-[var(--md-sys-color-outline-variant)]">
-                  v0.1.0-alpha
+                  v2.1.0
                 </span>
               </div>
               <p className="text-xs text-[var(--md-sys-color-on-surface-variant)] leading-relaxed">
-                A modern, blazingly fast download manager & repack scraper built with Next.js, Rust & Aria2.
+                A fast, reliable download manager built with Next.js, Rust, and Aria2.
               </p>
             </div>
           </div>
@@ -125,9 +125,9 @@ export default function AboutPanel() {
               <div className="w-8 h-8 rounded-xl bg-[var(--md-sys-color-tertiary-container)] text-[var(--md-sys-color-on-tertiary-container)] flex items-center justify-center mb-2.5">
                 <Layers size={18} />
               </div>
-              <h3 className="text-xs font-bold mb-1 text-[var(--md-sys-color-on-surface)]">FitGirl Scraper</h3>
+              <h3 className="text-xs font-bold mb-1 text-[var(--md-sys-color-on-surface)]">Resilient Transfers</h3>
               <p className="text-[11px] text-[var(--md-sys-color-on-surface-variant)] leading-relaxed">
-                Integrated mirror resolver for FuckingFast, DataNodes & game hosts.
+                Pause, resume, retry, and manage reliable multi-connection downloads.
               </p>
             </div>
           </div>
@@ -137,9 +137,9 @@ export default function AboutPanel() {
               <div className="w-8 h-8 rounded-xl bg-[var(--md-sys-color-surface-container-high)] text-[var(--md-sys-color-primary)] flex items-center justify-center mb-2.5 border border-[var(--md-sys-color-outline-variant)]">
                 <ClipboardText size={18} />
               </div>
-              <h3 className="text-xs font-bold mb-1 text-[var(--md-sys-color-on-surface)]">Smart Auto-Detect</h3>
+              <h3 className="text-xs font-bold mb-1 text-[var(--md-sys-color-on-surface)]">Protocol Support</h3>
               <p className="text-[11px] text-[var(--md-sys-color-on-surface-variant)] leading-relaxed">
-                Automatically detects copied repack links from your clipboard for 1-click scraping.
+                Add HTTP(S), magnet, Metalink, ED2K, and local torrent tasks from one place.
               </p>
             </div>
           </div>

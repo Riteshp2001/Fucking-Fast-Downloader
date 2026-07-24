@@ -1,0 +1,43 @@
+id: com.ff-downloader.app
+runtime: org.gnome.Platform
+runtime-version: '46'
+sdk: org.gnome.Sdk
+command: ff-downloader
+
+finish-args:
+  # Display and GPU acceleration.
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  # Downloads need network access; only the standard Downloads directory is exposed.
+  - --share=network
+  - --filesystem=xdg-download
+  # Required by the single-instance and system-tray integrations.
+  - --talk-name=com.ff_downloader.app.SingleInstance
+  - --own-name=com.ff_downloader.app.SingleInstance
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --filesystem=xdg-run/tray-icon:create
+  # Native notifications are delivered through the desktop notification service.
+  - --talk-name=org.freedesktop.Notifications
+
+modules:
+  - name: ff-downloader
+    buildsystem: simple
+    build-commands:
+      - ar -x ff-downloader.deb
+      - tar -xf data.tar.*
+      - install -Dm755 usr/bin/ff-downloader /app/bin/ff-downloader
+      - install -Dm644 com.ff-downloader.app.desktop /app/share/applications/com.ff-downloader.app.desktop
+      - install -Dm644 com.ff-downloader.app.metainfo.xml /app/share/metainfo/com.ff-downloader.app.metainfo.xml
+      - install -Dm644 ff-downloader.png /app/share/icons/hicolor/512x512/apps/com.ff-downloader.app.png
+    sources:
+      - type: file
+        path: ff-downloader.deb
+      - type: file
+        path: com.ff-downloader.app.desktop
+      - type: file
+        path: com.ff-downloader.app.metainfo.xml
+      - type: file
+        path: ../src-tauri/icons/ff-downloader-master.png
+        dest-filename: ff-downloader.png

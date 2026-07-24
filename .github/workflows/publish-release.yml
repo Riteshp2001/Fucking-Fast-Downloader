@@ -1,0 +1,68 @@
+name: Publish Release Artifacts
+
+on:
+  workflow_run:
+    workflows: [Tagged Release Build]
+    types: [completed]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-release-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+      - id: tag
+        name: Resolve validated release tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="$(git tag --points-at "${{ github.event.workflow_run.head_sha }}" | grep -Ex 'v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?' | head -n 1)"
+          [[ -n "$tag" ]] || { echo "No valid release tag points to this workflow run." >&2; exit 1; }
+          echo "value=$tag" >> "$GITHUB_OUTPUT"
+      - name: Refuse to overwrite an existing release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "${{ steps.tag.outputs.value }}" >/dev/null 2>&1; then
+            echo "A release already exists for this tag; refusing to overwrite it." >&2
+            exit 1
+          fi
+      - name: Download validated build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+          path: release-assets
+      - name: Assemble updater manifest and checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t manifests < <(find release-assets -type f -name latest.json | sort)
+          (( ${#manifests[@]} > 0 )) || { echo "No Tauri updater manifests were produced." >&2; exit 1; }
+          jq -s 'reduce .[] as $item ({platforms: {}}; .version = $item.version | .notes = $item.notes | .pub_date = $item.pub_date | .platforms += ($item.platforms // {}))' "${manifests[@]}" > release-assets/latest.json
+          find release-assets -type f ! -name latest.json -print0 | sort -z | xargs -0 sha256sum > release-assets/checksums.txt
+      - name: Create draft release and upload artifacts
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="${{ steps.tag.outputs.value }}"
+          gh release create "$tag" --title "FF Downloader $tag" --generate-notes --draft --verify-tag
+          find release-assets -type f ! -name latest.json -print0 | xargs -0 gh release upload "$tag"
+          gh release upload "$tag" release-assets/latest.json
+          gh release edit "$tag" --draft=false --latest

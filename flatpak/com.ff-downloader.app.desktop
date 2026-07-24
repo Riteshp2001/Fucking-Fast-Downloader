@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=FF Downloader
+GenericName=Download Manager
+Comment=Fast, reliable downloads for direct links and peer-to-peer content you are authorized to share
+Exec=ff-downloader %U
+Icon=com.ff-downloader.app
+Terminal=false
+Categories=Network;FileTransfer;
+MimeType=application/x-bittorrent;x-scheme-handler/magnet;x-scheme-handler/ed2k;x-scheme-handler/ffdownloader;
+StartupNotify=true
+StartupWMClass=ff-downloader

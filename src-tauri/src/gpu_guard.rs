@@ -9,7 +9,7 @@
 use std::io::Write;
 
 #[cfg(any(target_os = "linux", test))]
-const SELF_SET_MARKER: &str = "_MOTRIX_WEBKIT_RENDERING_SELF_SET";
+const SELF_SET_MARKER: &str = "_FF_DOWNLOADER_WEBKIT_RENDERING_SELF_SET";
 
 pub const WEBKIT_DISABLE_DMABUF_RENDERER: &str = "WEBKIT_DISABLE_DMABUF_RENDERER";
 
@@ -201,7 +201,7 @@ mod tests {
 
     #[test]
     fn self_set_marker_is_stable_value() {
-        assert_eq!(SELF_SET_MARKER, "_MOTRIX_WEBKIT_RENDERING_SELF_SET");
+        assert_eq!(SELF_SET_MARKER, "_FF_DOWNLOADER_WEBKIT_RENDERING_SELF_SET");
     }
 
     #[test]

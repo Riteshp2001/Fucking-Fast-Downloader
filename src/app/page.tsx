@@ -6,7 +6,6 @@ import TaskList from '@/components/task/TaskList';
 import TaskControls from '@/components/task/TaskControls';
 import TaskDetail from '@/components/task/TaskDetail';
 import AddTaskDialog from '@/components/task/AddTaskDialog';
-import ScraperPanel from '@/components/fitgirl/ScraperPanel';
 import PreferencePanel from '@/components/preference/PreferencePanel';
 import AboutPanel from '@/components/about/AboutPanel';
 import { useEngine } from '@/hooks/useEngine';
@@ -24,10 +23,6 @@ export default function Home() {
   return (
     <AppLayout>
       {({ activeView }) => {
-        if (activeView === 'scraper') {
-          return <ScraperPanel />;
-        }
-
         if (activeView === 'preferences') {
           return <PreferencePanel />;
         }

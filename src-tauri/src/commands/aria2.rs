@@ -546,18 +546,27 @@ mod tests {
 
         assert_eq!(
             paths[0],
-            PathBuf::from("/tmp/ff-downloader-ed2k-search/ff-downloader-ed2k-search-75c1fb5d8979819f")
+            PathBuf::from(
+                "/tmp/ff-downloader-ed2k-search/ff-downloader-ed2k-search-75c1fb5d8979819f"
+            )
         );
         assert_eq!(
             paths[1],
-            PathBuf::from("/tmp/ff-downloader-ed2k-search/ff-downloader-ed2k-search-75c1fb5d8979819f.aria2")
+            PathBuf::from(
+                "/tmp/ff-downloader-ed2k-search/ff-downloader-ed2k-search-75c1fb5d8979819f.aria2"
+            )
         );
     }
 
     #[test]
     fn ed2k_search_temp_paths_reject_path_like_gid_values() {
-        assert!(ed2k_search_temp_paths(Path::new("/tmp/ff-downloader-ed2k-search"), "../bad").is_err());
-        assert!(ed2k_search_temp_paths(Path::new("/tmp/ff-downloader-ed2k-search"), "bad/path").is_err());
+        assert!(
+            ed2k_search_temp_paths(Path::new("/tmp/ff-downloader-ed2k-search"), "../bad").is_err()
+        );
+        assert!(
+            ed2k_search_temp_paths(Path::new("/tmp/ff-downloader-ed2k-search"), "bad/path")
+                .is_err()
+        );
         assert!(ed2k_search_temp_paths(Path::new("/tmp/ff-downloader-ed2k-search"), "").is_err());
     }
 

@@ -423,13 +423,13 @@ mod tests {
     fn jsonrpc_request_serializes_correctly() {
         let req = JsonRpcRequest {
             jsonrpc: "2.0",
-            id: "motrix".to_string(),
+            id: "ff-downloader".to_string(),
             method: "aria2.getGlobalStat".to_string(),
             params: vec![serde_json::Value::String("token:secret123".to_string())],
         };
         let json = serde_json::to_value(&req).expect("serialize");
         assert_eq!(json["jsonrpc"], "2.0");
-        assert_eq!(json["id"], "motrix");
+        assert_eq!(json["id"], "ff-downloader");
         assert_eq!(json["method"], "aria2.getGlobalStat");
         assert_eq!(json["params"][0], "token:secret123");
     }
@@ -439,7 +439,7 @@ mod tests {
     #[test]
     fn jsonrpc_response_with_result() {
         let json = serde_json::json!({
-            "id": "motrix",
+            "id": "ff-downloader",
             "jsonrpc": "2.0",
             "result": "OK"
         });
@@ -451,7 +451,7 @@ mod tests {
     #[test]
     fn jsonrpc_response_with_error() {
         let json = serde_json::json!({
-            "id": "motrix",
+            "id": "ff-downloader",
             "jsonrpc": "2.0",
             "error": { "code": -32600, "message": "Invalid Request" }
         });

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.ff-downloader.app</id>
+  <name>FF Downloader</name>
+  <summary>Fast, reliable download management</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <developer_name>Ritesh Pandit</developer_name>
+  <description>
+    <p>FF Downloader manages direct downloads and peer-to-peer transfers that you are authorized to share.</p>
+    <p>It provides progress reporting, pause and resume controls, configurable connections, and a native desktop interface.</p>
+  </description>
+  <launchable type="desktop-id">com.ff-downloader.app.desktop</launchable>
+  <url type="homepage">https://github.com/Riteshp2001/Fucking-Fast-Downloader</url>
+  <url type="bugtracker">https://github.com/Riteshp2001/Fucking-Fast-Downloader/issues</url>
+  <content_rating type="oars-1.1" />
+  <releases>
+    <release version="2.1.0" date="2026-07-25" />
+  </releases>
+</component>

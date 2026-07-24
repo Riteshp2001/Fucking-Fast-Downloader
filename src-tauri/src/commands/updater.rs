@@ -9,9 +9,9 @@ use tauri_plugin_updater::UpdaterExt;
 use tokio::sync::{Mutex, Notify};
 use url::Url;
 
-/// Base URL for update JSON files on the fixed `updater` GitHub Release tag.
+/// Base URL for update JSON files on the latest published GitHub Release.
 const UPDATER_BASE_URL: &str =
-    "https://github.com/AnInsomniacy/motrix-next/releases/download/updater";
+    "https://github.com/Riteshp2001/Fucking-Fast-Downloader/releases/latest/download";
 
 /// Serializable update metadata returned to the frontend.
 #[derive(Debug, Clone, Serialize)]

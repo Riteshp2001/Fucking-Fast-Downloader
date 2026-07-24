@@ -32,32 +32,6 @@ export interface Aria2GlobalStat {
   numStoppedTotal: string;
 }
 
-export interface ScrapeResult {
-  original_url: string;
-  file_links: string[];
-  resolved_links: ResolvedLink[];
-}
-
-export interface ResolvedLink {
-  original: string;
-  direct_url?: string;
-  file_id?: string;
-  file_name?: string;
-  source_name?: string;
-  file_size?: string;
-  success: boolean;
-  error?: string;
-}
-
-export interface ScrapedItem {
-  link: string;
-  name: string;
-  size: string;
-  gid?: string;
-  success: boolean;
-  error?: string;
-}
-
 export interface DownloadTask extends Aria2Task {
   displayName: string;
   progress: number;
