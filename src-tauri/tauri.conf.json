@@ -86,8 +86,7 @@
     },
     "linux": {
       "deb": {},
-      "rpm": {},
-      "flatpak": {}
+      "rpm": {}
     }
   },
   "plugins": {
