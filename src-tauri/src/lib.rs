@@ -782,6 +782,11 @@ pub fn run() {
         .manage(std::sync::Arc::new(UpdateCancelState::new()))
         .manage(std::sync::Arc::new(DownloadedUpdate::new()))
         .manage(std::sync::Arc::new(ShutdownCancelState::new()))
+        .manage(std::sync::Arc::new(tokio::sync::Mutex::new({
+            let mut registry = providers::ProviderRegistry::new();
+            registry.register(Box::new(providers::fitgirl::FitGirlProvider));
+            registry
+        })))
         .invoke_handler(tauri::generate_handler![
             commands::get_system_config,
             commands::save_system_config,
