@@ -15,12 +15,6 @@ pub enum ProviderError {
     #[error("Not found: {0}")]
     NotFound(String),
 
-    #[error("Rate limited — retry after {0}s")]
-    RateLimited(u64),
-
-    #[error("Blocked by DDoS-Guard")]
-    DdsGuard,
-
     #[error("Provider disabled")]
     Disabled,
 

@@ -1,32 +1,15 @@
-use crate::providers::{GameDetail, ProviderRegistry, SearchResult};
 use crate::providers::cloudflare::CloudflareHandler;
-use serde::{Deserialize, Serialize};
+use crate::providers::{GameDetail, ProviderRegistry, SearchResult};
 use std::sync::Arc;
 use tauri::{AppHandle, State};
 use tokio::sync::Mutex;
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ProviderStatus {
-    pub name: String,
-    pub enabled: bool,
-    pub error: Option<String>,
-}
-
 #[tauri::command]
 pub async fn list_providers(
     registry: State<'_, Arc<Mutex<ProviderRegistry>>>,
-) -> Result<Vec<ProviderStatus>, String> {
+) -> Result<Vec<crate::providers::ProviderStatus>, String> {
     let registry = registry.lock().await;
-    let statuses: Vec<ProviderStatus> = registry
-        .list()
-        .into_iter()
-        .map(|s| ProviderStatus {
-            name: s.name,
-            enabled: s.enabled,
-            error: s.error,
-        })
-        .collect();
-    Ok(statuses)
+    Ok(registry.list())
 }
 
 #[tauri::command]

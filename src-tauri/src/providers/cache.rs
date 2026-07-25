@@ -61,17 +61,4 @@ impl ProviderCache {
         Ok(())
     }
 
-    pub fn invalidate(&self, key: &str) -> Result<(), ProviderError> {
-        self.db
-            .execute("DELETE FROM provider_cache WHERE key = ?1", params![key])
-            .map_err(|e| ProviderError::Cache(format!("Failed to invalidate cache: {e}")))?;
-        Ok(())
-    }
-
-    pub fn clear_all(&self) -> Result<(), ProviderError> {
-        self.db
-            .execute("DELETE FROM provider_cache", [])
-            .map_err(|e| ProviderError::Cache(format!("Failed to clear cache: {e}")))?;
-        Ok(())
-    }
 }

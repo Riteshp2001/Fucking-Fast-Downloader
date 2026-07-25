@@ -30,13 +30,6 @@ pub struct GameDetail {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DirectLink {
-    pub url: String,
-    pub filename: String,
-    pub size: i64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProviderStatus {
     pub name: String,
     pub enabled: bool,
