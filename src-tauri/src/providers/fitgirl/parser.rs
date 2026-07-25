@@ -199,6 +199,61 @@ pub fn parse_search_results(
 mod tests {
     use super::*;
 
+    const SEARCH_FIXTURE: &str = include_str!("test_fixtures/search_results.html");
+    const ARTICLE_FIXTURE: &str = include_str!("test_fixtures/game_article.html");
+
+    #[test]
+    fn test_parse_search_results_extracts_titles_and_links() {
+        let results = parse_search_results(SEARCH_FIXTURE).expect("should parse");
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0].title, "Test Game — Full Repack");
+        assert!(results[0].url.contains("test-game"));
+    }
+
+    #[test]
+    fn test_parse_search_results_extracts_images() {
+        let results = parse_search_results(SEARCH_FIXTURE).expect("should parse");
+        assert!(results[0].image.is_some());
+        assert!(results[0].image.as_ref().unwrap().contains("wsrv.nl"));
+    }
+
+    #[test]
+    fn test_parse_game_article_extracts_title() {
+        let page = parse_game_article(ARTICLE_FIXTURE).expect("should parse");
+        assert_eq!(page.title, "Test Game — Full Repack");
+    }
+
+    #[test]
+    fn test_parse_game_article_extracts_features() {
+        let page = parse_game_article(ARTICLE_FIXTURE).expect("should parse");
+        assert!(page.features.iter().any(|f| f.contains("Feature one")));
+    }
+
+    #[test]
+    fn test_parse_game_article_extracts_dlcs() {
+        let page = parse_game_article(ARTICLE_FIXTURE).expect("should parse");
+        assert!(page.dlcs.iter().any(|d| d.contains("DLC one")));
+    }
+
+    #[test]
+    fn test_parse_game_article_extracts_magnet_links() {
+        let page = parse_game_article(ARTICLE_FIXTURE).expect("should parse");
+        assert!(page.magnet_links.iter().any(|m| m.starts_with("magnet:")));
+    }
+
+    #[test]
+    fn test_parse_game_article_extracts_images() {
+        let page = parse_game_article(ARTICLE_FIXTURE).expect("should parse");
+        assert!(!page.images.is_empty());
+        assert!(page.images[0].contains("wsrv.nl"));
+    }
+
+    #[test]
+    fn test_parse_game_article_extracts_repack_size() {
+        let page = parse_game_article(ARTICLE_FIXTURE).expect("should parse");
+        assert_eq!(page.repack_size, Some("5.6 GB".into()));
+    }
+
     #[test]
     fn test_upscale_image_url_transforms_wp_content() {
         let result = upscale_image_url(
