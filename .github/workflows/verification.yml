@@ -81,9 +81,12 @@ jobs:
   platform:
     name: ${{ matrix.name }}
     needs: source
-
     runs-on: ${{ matrix.os }}
     timeout-minutes: 55
+    env:
+      HAS_WINDOWS_SIGNING: ${{ secrets.WINDOWS_CERTIFICATE != '' && secrets.WINDOWS_CERTIFICATE_PASSWORD != '' && vars.WINDOWS_CERTIFICATE_THUMBPRINT != '' }}
+      HAS_MACOS_SIGNING: ${{ secrets.APPLE_CERTIFICATE != '' && secrets.APPLE_CERTIFICATE_PASSWORD != '' && secrets.KEYCHAIN_PASSWORD != '' && secrets.APPLE_ID != '' && secrets.APPLE_PASSWORD != '' && secrets.APPLE_TEAM_ID != '' }}
+      HAS_TAURI_SIGNING: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
     strategy:
       fail-fast: false
       matrix:
@@ -91,11 +94,11 @@ jobs:
           - name: Windows x64
             os: windows-latest
             target: x86_64-pc-windows-msvc
-          - name: macOS Apple Silicon
+          - name: macOS ARM
             os: macos-14
             target: aarch64-apple-darwin
           - name: macOS Intel
-            os: macos-13
+            os: macos-14
             target: x86_64-apple-darwin
           - name: Linux x64
             os: ubuntu-24.04
@@ -128,11 +131,96 @@ jobs:
           sudo apt-get install --yes libwebkit2gtk-4.1-dev libgtk-3-dev \
             libayatana-appindicator3-dev librsvg2-dev libsoup-3.0-dev
 
+      - name: Require Tauri updater signing key on push
+        if: github.event_name == 'push' && env.HAS_TAURI_SIGNING != 'true'
+        shell: bash
+        run: |
+          echo '::error::TAURI_SIGNING_PRIVATE_KEY is not configured. Updater-signed builds are required on push.'
+          exit 1
+
+      - name: Windows code-signing not configured
+        if: runner.os == 'Windows' && env.HAS_WINDOWS_SIGNING != 'true'
+        shell: pwsh
+        run: Write-Host '::warning::Windows code-signing certificate is not configured. The installer will trigger SmartScreen warnings.'
+
+      - name: macOS code-signing not configured
+        if: runner.os == 'macOS' && env.HAS_MACOS_SIGNING != 'true'
+        shell: bash
+        run: echo '::warning::Apple code-signing/notarization is not configured. The app will trigger Gatekeeper warnings.'
+
+      - name: Import Windows code-signing certificate
+        if: runner.os == 'Windows' && env.HAS_WINDOWS_SIGNING == 'true'
+        shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          $certificateDirectory = Join-Path $env:RUNNER_TEMP 'ff-downloader-certificate'
+          New-Item -ItemType Directory -Path $certificateDirectory -Force | Out-Null
+          $encodedCertificate = Join-Path $certificateDirectory 'certificate.base64'
+          $certificatePath = Join-Path $certificateDirectory 'certificate.pfx'
+          Set-Content -Path $encodedCertificate -Value $env:WINDOWS_CERTIFICATE -NoNewline
+          certutil -f -decode $encodedCertificate $certificatePath | Out-Host
+          Import-PfxCertificate -FilePath $certificatePath -CertStoreLocation Cert:\CurrentUser\My -Password (ConvertTo-SecureString -String $env:WINDOWS_CERTIFICATE_PASSWORD -Force -AsPlainText) | Out-Null
+          Remove-Item -LiteralPath $certificateDirectory -Recurse -Force
+
+      - name: Create Windows signing configuration
+        if: runner.os == 'Windows' && env.HAS_WINDOWS_SIGNING == 'true'
+        shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE_THUMBPRINT: ${{ vars.WINDOWS_CERTIFICATE_THUMBPRINT }}
+          WINDOWS_TIMESTAMP_URL: ${{ vars.WINDOWS_TIMESTAMP_URL || 'http://timestamp.digicert.com' }}
+        run: |
+          @{ bundle = @{ windows = @{ certificateThumbprint = $env:WINDOWS_CERTIFICATE_THUMBPRINT; digestAlgorithm = 'sha256'; timestampUrl = $env:WINDOWS_TIMESTAMP_URL } } } |
+            ConvertTo-Json -Depth 5 |
+            Set-Content -Path src-tauri/tauri.windows.release.conf.json -Encoding utf8
+
+      - name: Import macOS signing certificate
+        if: runner.os == 'macOS' && env.HAS_MACOS_SIGNING == 'true'
+        shell: bash
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          keychain_path="$RUNNER_TEMP/ff-downloader-build.keychain-db"
+          certificate_path="$RUNNER_TEMP/ff-downloader-certificate.p12"
+          echo "$APPLE_CERTIFICATE" | base64 --decode > "$certificate_path"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$keychain_path"
+          security default-keychain -s "$keychain_path"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$keychain_path"
+          security set-keychain-settings -lut 3600 "$keychain_path"
+          security import "$certificate_path" -k "$keychain_path" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$keychain_path"
+          signing_identity="$(security find-identity -v -p codesigning "$keychain_path" | sed -n 's/.*"\(.*\)"/\1/p' | head -n 1)"
+          [[ -n "$signing_identity" ]] || { echo 'No valid macOS code-signing identity was imported.' >&2; exit 1; }
+          echo "APPLE_SIGNING_IDENTITY=$signing_identity" >> "$GITHUB_ENV"
+          rm -f "$certificate_path"
+
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build unsigned distributable
-        run: pnpm tauri build --target ${{ matrix.target }} --config src-tauri/tauri.ci.conf.json
+      - name: Build signed distributable
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ env.APPLE_SIGNING_IDENTITY }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        shell: bash
+        run: |
+          config_args=()
+          if [[ "${RUNNER_OS}" == "Windows" && "${HAS_WINDOWS_SIGNING}" == "true" ]]; then
+            config_args=(--config src-tauri/tauri.windows.release.conf.json)
+          fi
+          if [[ "${HAS_TAURI_SIGNING}" != "true" ]]; then
+            config_args+=(--config src-tauri/tauri.ci.conf.json)
+          fi
+          pnpm tauri build --target "${{ matrix.target }}" "${config_args[@]}"
 
       - name: Upload platform artifacts
         uses: actions/upload-artifact@v4
@@ -172,12 +260,12 @@ jobs:
           sudo apt-get install --yes flatpak flatpak-builder appstream \
             libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev \
             librsvg2-dev libsoup-3.0-dev
-          flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
-          flatpak install --noninteractive --assumeyes flathub org.gnome.Sdk//46 org.gnome.Platform//46
+          sudo flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+          sudo flatpak install --noninteractive --assumeyes flathub org.gnome.Sdk//46 org.gnome.Platform//46 org.flatpak.Builder
 
       - name: Validate manifest and AppStream metadata
         run: |
-          flatpak-builder-lint manifest flatpak/com.ff-downloader.app.yml
+          flatpak run --command=flatpak-builder-lint org.flatpak.Builder manifest flatpak/com.ff-downloader.app.yml
           appstreamcli validate --no-net flatpak/com.ff-downloader.app.metainfo.xml
 
       - name: Build Flatpak bundle
