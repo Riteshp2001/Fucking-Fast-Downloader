@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { Aria2GlobalStat, Aria2Task } from '@/types';
+import type { SearchResult, GameDetail, ProviderStatus } from '@/types/provider';
 
 export const isTauri = (): boolean => {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
@@ -41,6 +42,19 @@ export const getSystemConfig = async (): Promise<Record<string, unknown>> =>
 
 export const saveSystemConfig = async (config: Record<string, unknown>) =>
   isTauri() && invoke('save_system_config', { config });
+
+// Provider commands
+export const listProviders = async (): Promise<ProviderStatus[]> =>
+  isTauri() ? invoke<ProviderStatus[]>('list_providers') : [];
+
+export const searchProvider = async (provider: string, query: string): Promise<SearchResult[]> =>
+  isTauri() ? invoke<SearchResult[]>('search_provider', { provider, query }) : [];
+
+export const fetchGameDetail = async (provider: string, url: string): Promise<GameDetail> =>
+  isTauri() ? invoke<GameDetail>('fetch_game_detail', { provider, url }) : { title: '', images: [], description: '', features: [], dlcs: [], magnet_links: [] };
+
+export const solveProviderCaptcha = async (provider: string, url: string) =>
+  isTauri() && invoke('solve_provider_captcha', { provider, url });
 
 // Events
 export const onEngineEvent = async (callback: (payload: unknown) => void): Promise<UnlistenFn | null> => {
