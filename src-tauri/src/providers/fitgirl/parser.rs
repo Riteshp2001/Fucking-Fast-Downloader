@@ -1,1 +1,216 @@
-// FitGirl HTML parser — implemented in Task 5
+use crate::providers::error::ProviderError;
+use crate::providers::fitgirl::types::FitGirlPage;
+use scraper::{ElementRef, Html, Selector};
+
+/// Parses a FitGirl game article HTML page.
+pub fn parse_game_article(html: &str) -> Result<FitGirlPage, ProviderError> {
+    let document = Html::parse_document(html);
+
+    // Title
+    let title_sel = Selector::parse("h1.entry-title")
+        .map_err(|_| ProviderError::Parse("Invalid title selector".into()))?;
+    let title = document
+        .select(&title_sel)
+        .next()
+        .and_then(|el| el.text().collect::<String>().into())
+        .map(|s: String| s.trim().to_string())
+        .unwrap_or_default();
+
+    // Entry content
+    let content_sel = Selector::parse(".entry-content")
+        .map_err(|_| ProviderError::Parse("Invalid content selector".into()))?;
+    let entry_content = document
+        .select(&content_sel)
+        .next()
+        .ok_or_else(|| ProviderError::Parse("No .entry-content found".into()))?;
+
+    let inner_html = entry_content.inner_html();
+
+    // Description: first paragraphs
+    let description = extract_description(&document, &content_sel);
+
+    // Features from "Game Features" list
+    let features = extract_section_list(&inner_html, "Game Features");
+
+    // DLCs from "Included DLCs" list
+    let dlcs = extract_section_list(&inner_html, "Included DLC");
+
+    // Magnet links
+    let magnet_links = extract_magnet_links(&document);
+
+    // Images from paragraphs 3-6
+    let images = extract_images(&entry_content);
+
+    // Repack size
+    let repack_size = extract_repack_size(&inner_html);
+
+    Ok(FitGirlPage {
+        title,
+        description,
+        features,
+        dlcs,
+        magnet_links,
+        images,
+        repack_size,
+    })
+}
+
+/// Extracts list items under a section heading (e.g., "Game Features", "Included DLCs").
+fn extract_section_list(html: &str, section_title: &str) -> Vec<String> {
+    let doc = Html::parse_fragment(html);
+
+    // Find heading containing the section title
+    let heading_sel = Selector::parse("strong, h3, h4")
+        .expect("Invalid heading selector");
+
+    for heading in doc.select(&heading_sel) {
+        let text: String = heading.text().collect();
+        if text.contains(section_title) {
+            // Walk siblings from the heading to find the next ul element
+            let mut current = heading.next_sibling();
+            while let Some(sibling) = current {
+                if sibling.value().is_element() {
+                    let is_ul = sibling.value().as_element().map_or(false, |e| e.name() == "ul");
+                    if is_ul {
+                        if let Some(ul_ref) = ElementRef::wrap(sibling) {
+                            return ul_ref
+                                .text()
+                                .filter_map(|t| {
+                                    let s = t.trim().to_string();
+                                    if s.is_empty() { None } else { Some(s) }
+                                })
+                                .collect();
+                        }
+                    }
+                }
+                current = sibling.next_sibling();
+            }
+            break;
+        }
+    }
+
+    Vec::new()
+}
+
+/// Extracts magnet links from the document.
+fn extract_magnet_links(document: &Html) -> Vec<String> {
+    let magnet_sel = Selector::parse("a[href^=\"magnet:?\"]")
+        .expect("Invalid magnet selector");
+    document
+        .select(&magnet_sel)
+        .filter_map(|a| a.attr("href").map(|h| h.to_string()))
+        .collect()
+}
+
+/// Extracts images from the entry content paragraphs.
+fn extract_images(entry_content: &scraper::ElementRef) -> Vec<String> {
+    let img_sel = Selector::parse("img").expect("Invalid img selector");
+    entry_content
+        .select(&img_sel)
+        .filter_map(|img| {
+            let src = img.attr("src")?;
+            // Convert 240p JPG to 1080p WebP via wsrv.nl
+            Some(upscale_image_url(src))
+        })
+        .take(5)
+        .collect()
+}
+
+/// Converts a 240p FitGirl image URL to 1080p WebP via wsrv.nl.
+fn upscale_image_url(url: &str) -> String {
+    if url.contains("wp-content") {
+        // Proxy through wsrv.nl for WebP conversion + upscaling
+        format!("https://wsrv.nl/?url={}&output=webp&w=1920", urlencoding(url))
+    } else {
+        url.to_string()
+    }
+}
+
+fn urlencoding(url: &str) -> String {
+    urlencoding::encode(url).into_owned()
+}
+
+/// Extracts description from the first paragraphs of entry content.
+fn extract_description(document: &Html, _content_sel: &Selector) -> String {
+    let p_sel = Selector::parse("p").expect("Invalid p selector");
+    document
+        .select(&p_sel)
+        .take(3)
+        .map(|p| p.text().collect::<String>())
+        .collect::<Vec<_>>()
+        .join("\n")
+        .trim()
+        .to_string()
+}
+
+/// Extracts repack size from text patterns like "Size: 5.6 GB" or "Repack Size: 5.6 GB".
+fn extract_repack_size(html: &str) -> Option<String> {
+    let re = regex::Regex::new(r"(?i)(?:size|repack\s*size)[:\s]+([\d.]+\s*(?:GB|MB|TB))")
+        .ok()?;
+    re.captures(html)
+        .and_then(|c| c.get(1).map(|m| m.as_str().to_string()))
+}
+
+/// Parses search results HTML from FitGirl search page.
+pub fn parse_search_results(
+    html: &str,
+) -> Result<Vec<crate::providers::SearchResult>, ProviderError> {
+    let document = Html::parse_document(html);
+    let article_sel = Selector::parse("article, .entry-title")
+        .map_err(|_| ProviderError::Parse("Invalid search selector".into()))?;
+
+    let link_sel = Selector::parse("a").expect("Invalid a selector");
+
+    let results: Vec<crate::providers::SearchResult> = document
+        .select(&article_sel)
+        .filter_map(|article| {
+            let link = article.select(&link_sel).next()?;
+            let title: String = link.text().collect();
+            let href = link.attr("href")?.to_string();
+
+            // Try to find a post thumbnail
+            let img = article
+                .select(&Selector::parse("img").expect("Invalid img selector"))
+                .next()
+                .and_then(|img| img.attr("src"))
+                .map(|s| upscale_image_url(s));
+
+            Some(crate::providers::SearchResult {
+                title: title.trim().to_string(),
+                url: href,
+                image: img,
+                description: None,
+                category: None,
+                size: None,
+            })
+        })
+        .collect();
+
+    if results.is_empty() {
+        return Err(ProviderError::NotFound(
+            "No search results found".into(),
+        ));
+    }
+
+    Ok(results)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_upscale_image_url_transforms_wp_content() {
+        let result = upscale_image_url(
+            "https://fitgirl-repacks.site/wp-content/uploads/2024/01/game-240x180.jpg",
+        );
+        assert!(result.contains("wsrv.nl"));
+        assert!(result.contains("output=webp"));
+    }
+
+    #[test]
+    fn test_upscale_image_url_passthrough_non_wp() {
+        let result = upscale_image_url("https://example.com/image.jpg");
+        assert_eq!(result, "https://example.com/image.jpg");
+    }
+}

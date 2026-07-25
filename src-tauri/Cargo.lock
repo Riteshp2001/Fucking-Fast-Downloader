@@ -1676,6 +1676,7 @@ dependencies = [
  "objc2-app-kit",
  "objc2-foundation",
  "os_info",
+ "regex",
  "reqwest 0.12.28",
  "rfc2047-decoder",
  "rfd",
