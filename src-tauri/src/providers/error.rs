@@ -33,7 +33,10 @@ impl From<reqwest::Error> for ProviderError {
         if e.is_timeout() {
             ProviderError::Timeout
         } else if let Some(status) = e.status() {
-            ProviderError::Http(status.as_u16(), status.canonical_reason().unwrap_or("Unknown").to_string())
+            ProviderError::Http(
+                status.as_u16(),
+                status.canonical_reason().unwrap_or("Unknown").to_string(),
+            )
         } else {
             ProviderError::Network(e.to_string())
         }

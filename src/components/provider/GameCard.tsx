@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import Image from 'next/image';
 import type { SearchResult } from '@/types/provider';
 import { DownloadSquare } from '@solar-icons/react';
 
@@ -17,9 +18,11 @@ export default function GameCard({ result, onSelect }: GameCardProps) {
     >
       {result.image && (
         <div className="w-16 h-16 rounded-lg overflow-hidden shrink-0 bg-[var(--md-sys-color-surface-container-highest)]">
-          <img
+          <Image
             src={result.image}
             alt=""
+            width={64}
+            height={64}
             className="w-full h-full object-cover"
             loading="lazy"
           />

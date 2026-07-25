@@ -65,6 +65,14 @@ const PROXY_CLEAR_KEYS: &[&str] = &[
     "no-proxy",
 ];
 
+const CONF_MANAGED_KEYS: &[&str] = &[
+    "bt-save-metadata",
+    "bt-load-saved-metadata",
+    "bt-seed-unverified",
+    "bt-hash-check-seed",
+    "bt-remove-unselected-file",
+];
+
 fn preserves_empty_value(key: &str) -> bool {
     PROXY_CLEAR_KEYS.contains(&key) || key == "seed-time"
 }
@@ -184,6 +192,20 @@ fn build_start_args_impl(
             }
 
             if key == "allow-remote-access" {
+                continue;
+            }
+
+            // force-save is per-download only (set via RPC addTorrent).
+            // It must NOT be passed as a CLI arg — doing so makes it the global
+            // default for ALL downloads, causing completed HTTP tasks to persist
+            // in the session file and re-download on restart.
+            if key == "force-save" {
+                continue;
+            }
+
+            // Options managed by the bundled aria2.conf that should not be
+            // overridden via CLI when using the config file.
+            if conf_path.is_some() && CONF_MANAGED_KEYS.contains(&key.as_str()) {
                 continue;
             }
 

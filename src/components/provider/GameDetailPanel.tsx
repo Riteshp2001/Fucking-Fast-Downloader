@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import Image from 'next/image';
 import { fetchGameDetail } from '@/lib/tauri';
 import type { SearchResult, GameDetail } from '@/types/provider';
 import { CloseCircle, Magnet, DownloadSquare } from '@solar-icons/react';
@@ -67,10 +68,12 @@ export default function GameDetailPanel({ result, onClose, onAddDownload }: Game
               {detail.images.length > 0 && (
                 <div className="flex gap-2 overflow-x-auto pb-2">
                   {detail.images.map((img, i) => (
-                    <img
+                    <Image
                       key={i}
                       src={img}
                       alt=""
+                      width={200}
+                      height={128}
                       className="h-32 rounded-xl object-cover shrink-0"
                       loading="lazy"
                     />

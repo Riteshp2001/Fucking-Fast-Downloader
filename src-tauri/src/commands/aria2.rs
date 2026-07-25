@@ -13,7 +13,7 @@ use tauri::{AppHandle, Manager, State};
 use tauri_plugin_store::StoreExt;
 
 const ED2K_SEARCH_TEMP_PREFIX: &str = "ff-downloader-ed2k-search-";
-const ED2K_SEARCH_FILE_PREFIX: &str = "aria2-next-ed2k-search-";
+const ED2K_SEARCH_FILE_PREFIX: &str = "ff-downloader-ed2k-search-";
 
 /// Fetch task list by type.
 #[tauri::command]
@@ -416,7 +416,11 @@ pub async fn aria2_change_position(
     if !is_safe_gid(&gid) {
         return Err("Invalid GID".into());
     }
-    state.0.change_position(&gid, pos, &how).await.map_err(|e| e.to_string())
+    state
+        .0
+        .change_position(&gid, pos, &how)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -431,12 +435,19 @@ pub async fn aria2_set_task_limit(
     }
     let mut opts = serde_json::Map::new();
     if let Some(limit) = download_limit {
-        opts.insert("max-download-limit".into(), serde_json::Value::String(limit));
+        opts.insert(
+            "max-download-limit".into(),
+            serde_json::Value::String(limit),
+        );
     }
     if let Some(limit) = upload_limit {
         opts.insert("max-upload-limit".into(), serde_json::Value::String(limit));
     }
-    state.0.change_option(&gid, serde_json::Value::Object(opts)).await.map_err(|e| e.to_string())
+    state
+        .0
+        .change_option(&gid, serde_json::Value::Object(opts))
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Forcefully remove a task by GID.

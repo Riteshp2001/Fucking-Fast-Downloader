@@ -68,8 +68,8 @@ fn extract_section_list(html: &str, section_title: &str) -> Vec<String> {
     for heading in doc.select(&heading_sel) {
         let text: String = heading.text().collect();
         if text.contains(section_title) {
-            // Walk siblings from the heading to find the next ul element
-            let mut current = heading.next_sibling();
+            // Walk siblings from the heading's parent to find the next ul element
+            let mut current = heading.parent().and_then(|p| p.next_sibling());
             while let Some(sibling) = current {
                 if sibling.value().is_element() {
                     let is_ul = sibling
@@ -300,7 +300,7 @@ mod tests {
         let result =
             parse_article_search_result(ARTICLE_FIXTURE, "https://fitgirl-repacks.site/test-game/")
                 .expect("should parse");
-        assert_eq!(result.title, "Test Game â€” Full Repack");
+        assert_eq!(result.title, "Test Game — Full Repack");
         assert_eq!(result.url, "https://fitgirl-repacks.site/test-game/");
         assert_eq!(result.size, Some("5.6 GB".into()));
         assert!(result.image.as_ref().unwrap().contains("wsrv.nl"));

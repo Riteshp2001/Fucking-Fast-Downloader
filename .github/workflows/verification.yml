@@ -2,9 +2,9 @@ name: Verification
 
 on:
   pull_request:
-    branches: [main, master]
+    branches: [main]
   push:
-    branches: [main, master, develop]
+    branches: [main, develop]
   workflow_dispatch:
 
 permissions:
@@ -81,7 +81,7 @@ jobs:
   platform:
     name: ${{ matrix.name }}
     needs: source
-    if: github.event_name != 'pull_request'
+
     runs-on: ${{ matrix.os }}
     timeout-minutes: 55
     strategy:
