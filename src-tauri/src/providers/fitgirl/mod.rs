@@ -27,7 +27,7 @@ pub struct FitGirlProvider {
 impl FitGirlProvider {
     pub fn new(
         cache: ProviderCache,
-        cloudflare: CloudflareHandler,
+        cloudflare: Arc<Mutex<CloudflareHandler>>,
         app_handle: AppHandle,
     ) -> Self {
         let client = Client::builder()
@@ -39,7 +39,7 @@ impl FitGirlProvider {
         Self {
             client,
             cache: Arc::new(Mutex::new(cache)),
-            cloudflare: Arc::new(Mutex::new(cloudflare)),
+            cloudflare,
             app_handle,
         }
     }

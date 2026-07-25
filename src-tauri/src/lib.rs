@@ -268,16 +268,19 @@ fn setup_app(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         let cache_path = app_data.join("provider_cache.db");
         let provider_cache = providers::cache::ProviderCache::open(&cache_path)
             .map_err(|e| format!("Failed to open provider cache: {e}"))?;
-        let cloudflare = providers::cloudflare::CloudflareHandler::new(&app_data);
+        let cloudflare = std::sync::Arc::new(tokio::sync::Mutex::new(
+            providers::cloudflare::CloudflareHandler::new(&app_data),
+        ));
 
         let mut registry = providers::ProviderRegistry::new();
         let fitgirl = providers::fitgirl::FitGirlProvider::new(
             provider_cache,
-            cloudflare,
+            cloudflare.clone(),
             app.handle().clone(),
         );
         registry.register(Box::new(fitgirl));
         app.manage(std::sync::Arc::new(tokio::sync::Mutex::new(registry)));
+        app.manage(cloudflare);
     }
 
     #[cfg(target_os = "macos")]
@@ -904,6 +907,10 @@ pub fn run() {
             commands::wait_for_engine,
             commands::system_shutdown,
             commands::cancel_shutdown,
+            commands::list_providers,
+            commands::search_provider,
+            commands::fetch_game_detail,
+            commands::solve_provider_captcha,
         ])
         // ── Window event interception ─────────────────────────────────
         //
