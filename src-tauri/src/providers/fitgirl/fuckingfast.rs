@@ -13,7 +13,7 @@ pub struct FuckingFastResolver {
 impl FuckingFastResolver {
     pub fn new() -> Self {
         let client = Client::builder()
-            .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36")
+            .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
             .timeout(Duration::from_secs(20))
             .cookie_store(true)
             .redirect(reqwest::redirect::Policy::none())
@@ -34,15 +34,20 @@ impl FuckingFastResolver {
         let post_url = format!("{BASE_URL}/f/{file_id}/go");
         let mut last_error = ProviderError::Network("FuckingFast resolve failed".into());
 
+        // Try direct POST to /f/{file_id}/go first. FuckingFast returns direct download links via Hx-Redirect
+        // on POST even when GET /{file_id} triggers Cloudflare 403 challenges.
+        match self.post_go(&post_url, &clean_url).await {
+            Ok(url) => return Ok(url),
+            Err(error) => last_error = error,
+        }
+
         for attempt in 0..MAX_RETRIES {
             if attempt > 0 {
                 tokio::time::sleep(Duration::from_secs(2 * attempt as u64)).await;
             }
 
-            if let Err(error) = self.warm_session(&clean_url).await {
-                last_error = error;
-                continue;
-            }
+            // Attempt to warm session, but don't abort if warm_session encounters Cloudflare 403
+            let _ = self.warm_session(&clean_url).await;
 
             match self.post_go(&post_url, &clean_url).await {
                 Ok(url) => return Ok(url),
