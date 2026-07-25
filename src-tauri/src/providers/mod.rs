@@ -4,7 +4,7 @@ pub mod error;
 pub mod fitgirl;
 
 use async_trait::async_trait;
-use error::ProviderError;
+pub use error::ProviderError;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 

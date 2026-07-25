@@ -262,10 +262,22 @@ fn setup_app(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         app.manage(history::HistoryDbState(std::sync::Arc::new(history_db)));
     }
 
-    // Cloudflare/DDoS-Guard handler — persists captcha cookies for provider requests.
+    // Provider cache + Cloudflare handler + FitGirl provider registry.
     {
         let app_data = app.path().app_data_dir()?;
-        app.manage(providers::cloudflare::CloudflareHandler::new(&app_data));
+        let cache_path = app_data.join("provider_cache.db");
+        let provider_cache = providers::cache::ProviderCache::open(&cache_path)
+            .map_err(|e| format!("Failed to open provider cache: {e}"))?;
+        let cloudflare = providers::cloudflare::CloudflareHandler::new(&app_data);
+
+        let mut registry = providers::ProviderRegistry::new();
+        let fitgirl = providers::fitgirl::FitGirlProvider::new(
+            provider_cache,
+            cloudflare,
+            app.handle().clone(),
+        );
+        registry.register(Box::new(fitgirl));
+        app.manage(std::sync::Arc::new(tokio::sync::Mutex::new(registry)));
     }
 
     #[cfg(target_os = "macos")]
@@ -788,11 +800,6 @@ pub fn run() {
         .manage(std::sync::Arc::new(UpdateCancelState::new()))
         .manage(std::sync::Arc::new(DownloadedUpdate::new()))
         .manage(std::sync::Arc::new(ShutdownCancelState::new()))
-        .manage(std::sync::Arc::new(tokio::sync::Mutex::new({
-            let mut registry = providers::ProviderRegistry::new();
-            registry.register(Box::new(providers::fitgirl::FitGirlProvider));
-            registry
-        })))
         .invoke_handler(tauri::generate_handler![
             commands::get_system_config,
             commands::save_system_config,
