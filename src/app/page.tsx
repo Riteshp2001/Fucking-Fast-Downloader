@@ -8,6 +8,7 @@ import TaskDetail from '@/components/task/TaskDetail';
 import AddTaskDialog from '@/components/task/AddTaskDialog';
 import PreferencePanel from '@/components/preference/PreferencePanel';
 import AboutPanel from '@/components/about/AboutPanel';
+import BrowseView from '@/components/provider/BrowseView';
 import { useEngine } from '@/hooks/useEngine';
 import { useTaskPolling } from '@/hooks/useTaskPolling';
 import { useTaskStore } from '@/stores/task-store';
@@ -29,6 +30,10 @@ export default function Home() {
 
         if (activeView === 'about') {
           return <AboutPanel />;
+        }
+
+        if (activeView === 'browse') {
+          return <BrowseView onOpenAddDialog={() => setIsAddOpen(true)} />;
         }
 
         const statusFilterMap: Record<string, 'all' | 'active' | 'complete' | 'error'> = {
