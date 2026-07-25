@@ -1,3 +1,4 @@
+mod providers;
 mod aria2;
 mod commands;
 mod db_guard;

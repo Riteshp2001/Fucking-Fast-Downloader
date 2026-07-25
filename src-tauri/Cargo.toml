@@ -58,6 +58,8 @@ tower-http = { version = "0.6", features = ["cors"] }
 keepawake = "0.6"
 mime2ext = "0.1"
 urlencoding = "2"
+scraper = "0.25"
+async-trait = "0.1"
 sanitize-filename = "0.6"
 content_disposition = "0.4"
 rfc2047-decoder = "1.1"
