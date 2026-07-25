@@ -30,7 +30,7 @@ function normalizeDownloadUrl(url: string): string {
     return trimmed;
   }
 
-  return trimmed.replace(/\s+/g, '').replace(/&amp;/gi, '&');
+  return trimmed.replace(/\s+/g, '').replace(/&amp;/gi, '&').replace(/&#038;/gi, '&');
 }
 
 function parseUrlHost(url: string): { isValid: boolean; host: string } {

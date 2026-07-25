@@ -158,7 +158,11 @@ fn extract_images(entry_content: &scraper::ElementRef) -> Vec<String> {
 
 fn extract_image_candidate(img: &ElementRef) -> Option<String> {
     for attr in ["data-src", "data-lazy-src", "data-original", "src"] {
-        if let Some(value) = img.attr(attr).map(str::trim).filter(|value| !value.is_empty()) {
+        if let Some(value) = img
+            .attr(attr)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
             return Some(value.to_string());
         }
     }
@@ -459,6 +463,10 @@ mod tests {
         let results = parse_search_results(html).expect("should parse");
 
         assert_eq!(results.len(), 1);
-        assert!(results[0].image.as_ref().unwrap().contains("thumb-240x180.jpg"));
+        assert!(results[0]
+            .image
+            .as_ref()
+            .unwrap()
+            .contains("thumb-240x180.jpg"));
     }
 }

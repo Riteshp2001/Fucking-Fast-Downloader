@@ -40,8 +40,9 @@ pub async fn fetch_game_detail(
 }
 
 #[tauri::command]
-pub async fn resolve_fuckingfast_link(url: String) -> Result<String, String> {
+pub async fn resolve_fuckingfast_link(app: AppHandle, url: String) -> Result<String, String> {
     FuckingFastResolver::new()
+        .with_app_handle(app)
         .resolve(&url)
         .await
         .map_err(|e| e.to_string())

@@ -1,7 +1,7 @@
 use serde::Serialize;
 use thiserror::Error;
 
-#[derive(Debug, Error, Serialize)]
+#[derive(Debug, Clone, Error, Serialize)]
 pub enum ProviderError {
     #[error("Network error: {0}")]
     Network(String),
