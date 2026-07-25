@@ -7,7 +7,7 @@ import type { SearchResult, ProviderStatus as ProviderStatusType } from '@/types
 import { useEffect } from 'react';
 
 interface BrowseViewProps {
-  onOpenAddDialog: () => void;
+  onOpenAddDialog: (urls?: string[]) => void;
 }
 
 export default function BrowseView({ onOpenAddDialog }: BrowseViewProps) {
@@ -24,7 +24,7 @@ export default function BrowseView({ onOpenAddDialog }: BrowseViewProps) {
 
   const handleAddDownload = useCallback((url: string) => {
     setSelected(null);
-    onOpenAddDialog();
+    onOpenAddDialog([url]);
   }, [onOpenAddDialog]);
 
   return (

@@ -7,7 +7,7 @@ edition = "2021"
 
 [lib]
 name = "ff_downloader_lib"
-crate-type = ["staticlib", "cdylib", "rlib"]
+crate-type = ["rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2.6.2", features = [] }

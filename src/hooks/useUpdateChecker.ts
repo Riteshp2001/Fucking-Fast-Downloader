@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { UpdateMetadata, UpdateProgressPayload } from "@/types";
+import { isTauri } from "@/lib/tauri";
 
 export function useUpdateChecker() {
   const [available, setAvailable] = useState<UpdateMetadata | null>(null);
@@ -10,7 +11,12 @@ export function useUpdateChecker() {
   const [progress, setProgress] = useState(0);
 
   useEffect(() => {
-    const unlisten = listen<UpdateProgressPayload>("update-progress", (e) => {
+    if (!isTauri()) return;
+
+    let disposed = false;
+    let cleanup: (() => void) | undefined;
+
+    listen<UpdateProgressPayload>("update-progress", (e) => {
       const p = e.payload;
       if (p.event === "Started") {
         setProgress(0);
@@ -19,11 +25,26 @@ export function useUpdateChecker() {
       } else if (p.event === "Finished") {
         setProgress(100);
       }
-    });
-    return () => { unlisten.then((f) => f()); };
+    })
+      .then((unlisten) => {
+        if (disposed) {
+          unlisten();
+        } else {
+          cleanup = unlisten;
+        }
+      })
+      .catch((error) => {
+        console.warn("Failed to listen for update progress:", error);
+      });
+
+    return () => {
+      disposed = true;
+      cleanup?.();
+    };
   }, []);
 
   const check = useCallback(async () => {
+    if (!isTauri()) return;
     setChecking(true);
     try {
       const result = await invoke<UpdateMetadata | null>("check_for_update", {
@@ -36,6 +57,7 @@ export function useUpdateChecker() {
   }, []);
 
   const download = useCallback(async () => {
+    if (!isTauri()) return;
     setDownloading(true);
     try {
       const r = await invoke<{ status: string }>("download_update", {

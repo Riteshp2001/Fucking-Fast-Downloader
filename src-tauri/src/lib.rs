@@ -1,4 +1,3 @@
-mod providers;
 mod aria2;
 mod commands;
 mod db_guard;
@@ -9,6 +8,7 @@ mod history;
 mod log_policy;
 #[cfg(target_os = "macos")]
 mod menu;
+mod providers;
 mod services;
 mod tray;
 mod upnp;
@@ -910,6 +910,7 @@ pub fn run() {
             commands::list_providers,
             commands::search_provider,
             commands::fetch_game_detail,
+            commands::resolve_fuckingfast_link,
             commands::solve_provider_captcha,
         ])
         // ── Window event interception ─────────────────────────────────
