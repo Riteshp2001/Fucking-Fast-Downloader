@@ -2,6 +2,7 @@
 
 import React, { useState, useCallback } from 'react';
 import { searchProvider } from '@/lib/tauri';
+import { formatError } from '@/lib/errors';
 import type { SearchResult } from '@/types/provider';
 import { MinimalisticMagnifier as SearchIcon, CloseCircle } from '@solar-icons/react';
 
@@ -14,10 +15,15 @@ interface SearchBarProps {
 export default function SearchBar({ onResults, onLoading, onError }: SearchBarProps) {
   const [query, setQuery] = useState('');
   const debounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const requestRef = React.useRef(0);
 
   const handleSearch = useCallback(async (q: string) => {
+    const requestId = ++requestRef.current;
+
     if (q.trim().length < 2) {
       onResults([]);
+      onLoading(false);
+      onError(null);
       return;
     }
 
@@ -26,12 +32,18 @@ export default function SearchBar({ onResults, onLoading, onError }: SearchBarPr
 
     try {
       const results = await searchProvider('fitgirl', q.trim());
-      onResults(results);
+      if (requestId === requestRef.current) {
+        onResults(results);
+      }
     } catch (err) {
-      onError(err instanceof Error ? err.message : String(err));
-      onResults([]);
+      if (requestId === requestRef.current) {
+        onError(formatError(err));
+        onResults([]);
+      }
     } finally {
-      onLoading(false);
+      if (requestId === requestRef.current) {
+        onLoading(false);
+      }
     }
   }, [onResults, onLoading, onError]);
 
@@ -42,8 +54,11 @@ export default function SearchBar({ onResults, onLoading, onError }: SearchBarPr
   };
 
   const handleClear = () => {
+    requestRef.current += 1;
     setQuery('');
     onResults([]);
+    onError(null);
+    onLoading(false);
   };
 
   return (

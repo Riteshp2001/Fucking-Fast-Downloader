@@ -12,7 +12,6 @@ use crate::providers::cache::ProviderCache;
 use crate::providers::cloudflare::CloudflareHandler;
 use crate::providers::error::ProviderError;
 use crate::providers::{GameDetail, Provider, SearchResult};
-use fuckingfast::FuckingFastResolver;
 
 const BASE_URL: &str = "https://fitgirl-repacks.site";
 const CACHE_TTL_SEARCH: u64 = 3600;
@@ -24,7 +23,6 @@ pub struct FitGirlProvider {
     cache: Arc<Mutex<ProviderCache>>,
     cloudflare: Arc<Mutex<CloudflareHandler>>,
     app_handle: AppHandle,
-    fuckingfast: FuckingFastResolver,
 }
 
 impl FitGirlProvider {
@@ -44,7 +42,6 @@ impl FitGirlProvider {
             cache: Arc::new(Mutex::new(cache)),
             cloudflare,
             app_handle,
-            fuckingfast: FuckingFastResolver::new(),
         }
     }
 
@@ -184,7 +181,7 @@ impl Provider for FitGirlProvider {
     }
 
     async fn fetch_details(&self, url: &str) -> Result<GameDetail, ProviderError> {
-        let cache_key = format!("fitgirl:detail:{}", url);
+        let cache_key = format!("fitgirl:detail:v2:{}", url);
         {
             let cache = self.cache.lock().await;
             if let Some(detail) = cache.get::<GameDetail>(&cache_key) {
@@ -203,9 +200,7 @@ impl Provider for FitGirlProvider {
             features: page.features,
             dlcs: page.dlcs,
             magnet_links: page.magnet_links,
-            direct_links: self
-                .resolve_fuckingfast_links(&page.fuckingfast_links)
-                .await,
+            direct_links: Vec::new(),
             raw_fuckingfast_links: page.fuckingfast_links,
             repack_size: page.repack_size,
         };
@@ -282,21 +277,3 @@ mod tests {
     }
 }
 
-impl FitGirlProvider {
-    async fn resolve_fuckingfast_links(&self, links: &[String]) -> Vec<String> {
-        let mut resolved = Vec::new();
-
-        for link in links {
-            match self.fuckingfast.resolve(link).await {
-                Ok(url) => resolved.push(url),
-                Err(error) => {
-                    log::warn!(
-                        "provider:fitgirl: failed to resolve FuckingFast link {link}: {error}"
-                    );
-                }
-            }
-        }
-
-        resolved
-    }
-}

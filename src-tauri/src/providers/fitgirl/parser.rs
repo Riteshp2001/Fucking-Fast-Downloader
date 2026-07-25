@@ -3,6 +3,8 @@ use crate::providers::fitgirl::types::FitGirlPage;
 use crate::providers::SearchResult;
 use scraper::{ElementRef, Html, Selector};
 
+const BASE_URL: &str = "https://fitgirl-repacks.site";
+
 /// Parses a FitGirl game article HTML page.
 pub fn parse_game_article(html: &str) -> Result<FitGirlPage, ProviderError> {
     let document = Html::parse_document(html);
@@ -133,15 +135,65 @@ fn extract_fuckingfast_links(document: &Html) -> Vec<String> {
 /// Extracts images from the entry content paragraphs.
 fn extract_images(entry_content: &scraper::ElementRef) -> Vec<String> {
     let img_sel = Selector::parse("img").expect("Invalid img selector");
-    entry_content
-        .select(&img_sel)
-        .filter_map(|img| {
-            let src = img.attr("src")?;
-            // Convert 240p JPG to 1080p WebP via wsrv.nl
-            Some(upscale_image_url(src))
-        })
-        .take(5)
-        .collect()
+    let mut images = Vec::new();
+
+    for img in entry_content.select(&img_sel) {
+        let Some(src) = extract_image_candidate(&img) else {
+            continue;
+        };
+        let Some(src) = normalize_image_url(&src) else {
+            continue;
+        };
+        let src = upscale_image_url(&src);
+        if !images.iter().any(|existing| existing == &src) {
+            images.push(src);
+        }
+        if images.len() >= 8 {
+            break;
+        }
+    }
+
+    images
+}
+
+fn extract_image_candidate(img: &ElementRef) -> Option<String> {
+    for attr in ["data-src", "data-lazy-src", "data-original", "src"] {
+        if let Some(value) = img.attr(attr).map(str::trim).filter(|value| !value.is_empty()) {
+            return Some(value.to_string());
+        }
+    }
+
+    img.attr("srcset").and_then(extract_largest_srcset_url)
+}
+
+fn extract_largest_srcset_url(srcset: &str) -> Option<String> {
+    srcset
+        .split(',')
+        .filter_map(|candidate| candidate.split_whitespace().next())
+        .filter(|url| !url.is_empty())
+        .last()
+        .map(str::to_string)
+}
+
+fn normalize_image_url(url: &str) -> Option<String> {
+    let trimmed = url.trim();
+    if trimmed.is_empty()
+        || trimmed.starts_with("data:")
+        || trimmed.starts_with("blob:")
+        || trimmed.starts_with("about:")
+    {
+        return None;
+    }
+
+    if let Some(protocol_relative) = trimmed.strip_prefix("//") {
+        return Some(format!("https://{protocol_relative}"));
+    }
+
+    if trimmed.starts_with('/') {
+        return Some(format!("{BASE_URL}{trimmed}"));
+    }
+
+    Some(trimmed.to_string())
 }
 
 /// Converts a 240p FitGirl image URL to 1080p WebP via wsrv.nl.
@@ -229,8 +281,9 @@ pub fn parse_search_results(html: &str) -> Result<Vec<SearchResult>, ProviderErr
             let img = article
                 .select(&img_sel)
                 .next()
-                .and_then(|img| img.attr("src"))
-                .map(|s| upscale_image_url(s));
+                .and_then(|img| extract_image_candidate(&img))
+                .and_then(|src| normalize_image_url(&src))
+                .map(|src| upscale_image_url(&src));
 
             Some(SearchResult {
                 title,
@@ -350,6 +403,28 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_game_article_extracts_lazy_loaded_images() {
+        let html = r#"
+            <html><body>
+            <h1 class="entry-title">Lazy Image Game</h1>
+            <div class="entry-content">
+              <p>Description.</p>
+              <img src="data:image/gif;base64,placeholder" data-lazy-src="/wp-content/uploads/2026/01/lazy-240x180.jpg" />
+              <img srcset="https://fitgirl-repacks.site/wp-content/uploads/2026/01/small-240x180.jpg 240w, https://fitgirl-repacks.site/wp-content/uploads/2026/01/large-768x432.jpg 768w" />
+              <img data-src="//fitgirl-repacks.site/wp-content/uploads/2026/01/protocol-240x180.jpg" />
+            </div>
+            </body></html>
+        "#;
+
+        let page = parse_game_article(html).expect("should parse");
+
+        assert_eq!(page.images.len(), 3);
+        assert!(page.images[0].contains("lazy-240x180.jpg"));
+        assert!(page.images[1].contains("large-768x432.jpg"));
+        assert!(page.images[2].contains("protocol-240x180.jpg"));
+    }
+
+    #[test]
     fn test_parse_game_article_extracts_repack_size() {
         let page = parse_game_article(ARTICLE_FIXTURE).expect("should parse");
         assert_eq!(page.repack_size, Some("5.6 GB".into()));
@@ -368,5 +443,22 @@ mod tests {
     fn test_upscale_image_url_passthrough_non_wp() {
         let result = upscale_image_url("https://example.com/image.jpg");
         assert_eq!(result, "https://example.com/image.jpg");
+    }
+
+    #[test]
+    fn test_parse_search_results_extracts_lazy_thumbnail() {
+        let html = r#"
+            <html><body>
+            <article>
+              <h2 class="entry-title"><a href="https://fitgirl-repacks.site/lazy-game/">Lazy Game</a></h2>
+              <img data-src="/wp-content/uploads/2026/01/thumb-240x180.jpg" />
+            </article>
+            </body></html>
+        "#;
+
+        let results = parse_search_results(html).expect("should parse");
+
+        assert_eq!(results.len(), 1);
+        assert!(results[0].image.as_ref().unwrap().contains("thumb-240x180.jpg"));
     }
 }

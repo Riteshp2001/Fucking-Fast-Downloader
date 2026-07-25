@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { addUri, resolveFuckingFastLink } from '@/lib/tauri';
+import { formatError } from '@/lib/errors';
 import {
   CloseCircle, AltArrowDown, AltArrowRight, AddSquare,
   TrashBinMinimalistic, ClipboardText, CheckCircle
@@ -19,13 +20,31 @@ interface ParsedUrl {
   host: string;
 }
 
+function isMagnetUrl(url: string): boolean {
+  return url.trim().toLowerCase().startsWith('magnet:?');
+}
+
+function normalizeDownloadUrl(url: string): string {
+  const trimmed = url.trim();
+  if (!isMagnetUrl(trimmed)) {
+    return trimmed;
+  }
+
+  return trimmed.replace(/\s+/g, '').replace(/&amp;/gi, '&');
+}
+
 function parseUrlHost(url: string): { isValid: boolean; host: string } {
-  if (url.toLowerCase().startsWith('magnet:?')) {
-    return { isValid: true, host: 'magnet' };
+  const normalized = normalizeDownloadUrl(url);
+
+  if (isMagnetUrl(normalized)) {
+    return {
+      isValid: /[?&]xt=urn:btih:/i.test(normalized),
+      host: 'magnet',
+    };
   }
 
   try {
-    const parsed = new URL(url);
+    const parsed = new URL(normalized);
     return { isValid: true, host: parsed.hostname };
   } catch {
     return { isValid: false, host: '' };
@@ -46,12 +65,30 @@ function getHostBadge(host: string) {
   return <span className="text-[9px] font-mono px-1.5 py-0.5 rounded-full bg-neutral-500/15 text-neutral-400 font-bold border border-neutral-500/30 shrink-0">🌐 {host.length > 20 ? host.slice(0, 20) + '…' : host}</span>;
 }
 
-function parseUrlsFromText(text: string): ParsedUrl[] {
-  // Split by newlines, then filter out empty/comment lines
-  const lines = text
+function normalizeInputLines(text: string): string[] {
+  const rawLines = text
     .split(/[\n\r]+/)
     .map(l => l.trim())
     .filter(l => l.length > 0 && !l.startsWith('#'));
+
+  const lines: string[] = [];
+  for (const line of rawLines) {
+    const startsNewUrl = /^[a-z][a-z0-9+.-]*:/i.test(line);
+    const previous = lines[lines.length - 1];
+
+    if (!startsNewUrl && previous && isMagnetUrl(previous)) {
+      lines[lines.length - 1] = `${previous}${line}`;
+      continue;
+    }
+
+    lines.push(line);
+  }
+
+  return lines.map(normalizeDownloadUrl);
+}
+
+function parseUrlsFromText(text: string): ParsedUrl[] {
+  const lines = normalizeInputLines(text);
 
   return lines.map(line => {
     const { isValid, host } = parseUrlHost(line);
@@ -93,7 +130,7 @@ export default function AddTaskDialog({ isOpen, onClose, initialUrls = [] }: Add
   const invalidCount = parsedUrls.filter(p => !p.isValid).length;
 
   const handleRemoveUrl = (index: number) => {
-    const lines = urlsText.split(/[\n\r]+/).map(l => l.trim()).filter(l => l.length > 0 && !l.startsWith('#'));
+    const lines = normalizeInputLines(urlsText);
     lines.splice(index, 1);
     setUrlsText(lines.join('\n'));
   };
@@ -127,8 +164,10 @@ export default function AddTaskDialog({ isOpen, onClose, initialUrls = [] }: Add
           ? await resolveFuckingFastLink(url)
           : url;
         const options: Record<string, unknown> = {};
-        if (outName.trim()) options['out'] = outName.trim();
-        if (connections) options['max-connection-per-server'] = String(connections);
+        if (!isMagnetUrl(downloadUrl)) {
+          if (outName.trim()) options['out'] = outName.trim();
+          if (connections) options['max-connection-per-server'] = String(connections);
+        }
         await addUri(downloadUrl, options);
       }
       setUrlsText('');
@@ -136,7 +175,7 @@ export default function AddTaskDialog({ isOpen, onClose, initialUrls = [] }: Add
       onClose();
     } catch (err: unknown) {
       console.error('Failed to add tasks:', err);
-      setErrorMsg(err instanceof Error ? err.message : String(err));
+      setErrorMsg(formatError(err));
     } finally {
       setIsSubmitting(false);
     }

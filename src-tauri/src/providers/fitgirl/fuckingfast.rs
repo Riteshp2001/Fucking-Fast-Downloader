@@ -34,8 +34,15 @@ impl FuckingFastResolver {
         let post_url = format!("{BASE_URL}/f/{file_id}/go");
         let mut last_error = ProviderError::Network("FuckingFast resolve failed".into());
 
-        // Try direct POST to /f/{file_id}/go first. FuckingFast returns direct download links via Hx-Redirect
-        // on POST even when GET /{file_id} triggers Cloudflare 403 challenges.
+        match self.fetch_page_direct_url(&clean_url).await {
+            Ok(Some(url)) => return Ok(url),
+            Ok(None) => {}
+            Err(error) => last_error = error,
+        }
+
+        // Older FuckingFast pages return direct download links via htmx headers
+        // on POST. Keep this as a fallback for pages that do not expose /dl/
+        // links in their HTML/JavaScript.
         match self.post_go(&post_url, &clean_url).await {
             Ok(url) => return Ok(url),
             Err(error) => last_error = error,
@@ -46,8 +53,11 @@ impl FuckingFastResolver {
                 tokio::time::sleep(Duration::from_secs(2 * attempt as u64)).await;
             }
 
-            // Attempt to warm session, but don't abort if warm_session encounters Cloudflare 403
-            let _ = self.warm_session(&clean_url).await;
+            match self.fetch_page_direct_url(&clean_url).await {
+                Ok(Some(url)) => return Ok(url),
+                Ok(None) => {}
+                Err(error) => last_error = error,
+            }
 
             match self.post_go(&post_url, &clean_url).await {
                 Ok(url) => return Ok(url),
@@ -58,28 +68,42 @@ impl FuckingFastResolver {
         Err(last_error)
     }
 
-    async fn warm_session(&self, clean_url: &str) -> Result<(), ProviderError> {
+    async fn fetch_page_direct_url(&self, clean_url: &str) -> Result<Option<String>, ProviderError> {
         let resp = self
             .client
             .get(clean_url)
             .header(header::ACCEPT, "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8")
             .header(header::ACCEPT_LANGUAGE, "en-US,en;q=0.9")
+            .header(header::CACHE_CONTROL, "no-cache")
+            .header(header::PRAGMA, "no-cache")
             .header(header::REFERER, "https://fitgirl-repacks.site/")
             .header(header::UPGRADE_INSECURE_REQUESTS, "1")
+            .header("Sec-Fetch-Dest", "document")
+            .header("Sec-Fetch-Mode", "navigate")
+            .header("Sec-Fetch-Site", "cross-site")
             .send()
             .await?;
 
-        if resp.status().is_success() {
-            Ok(())
-        } else {
-            Err(ProviderError::Http(
-                resp.status().as_u16(),
-                resp.status()
-                    .canonical_reason()
-                    .unwrap_or("Unknown")
-                    .to_string(),
-            ))
+        let status = resp.status();
+        let reason = status.canonical_reason().unwrap_or("Unknown").to_string();
+        let body = resp.text().await.map_err(ProviderError::from)?;
+
+        if let Some(url) = extract_direct_download_url(&body) {
+            return Ok(Some(url));
         }
+
+        if is_rate_limited_body(&body) {
+            return Err(ProviderError::Http(
+                429,
+                "FuckingFast rate limit detected; wait a few minutes and retry".into(),
+            ));
+        }
+
+        if !status.is_success() {
+            return Err(ProviderError::Http(status.as_u16(), reason));
+        }
+
+        Ok(None)
     }
 
     async fn post_go(&self, post_url: &str, clean_url: &str) -> Result<String, ProviderError> {
@@ -103,6 +127,7 @@ impl FuckingFastResolver {
         let header_redirect = resp
             .headers()
             .get("hx-redirect")
+            .or_else(|| resp.headers().get("hx-location"))
             .or_else(|| resp.headers().get(header::LOCATION))
             .and_then(|value| value.to_str().ok())
             .and_then(|value| normalize_redirect_url(clean_url, value).ok());
@@ -124,11 +149,18 @@ impl FuckingFastResolver {
 }
 
 fn is_direct_download_url(link: &str) -> bool {
-    url::Url::parse(link)
-        .ok()
-        .and_then(|url| url.host_str().map(str::to_ascii_lowercase))
-        .map(|host| host == "dl.fuckingfast.co" || host.ends_with(".dl.fuckingfast.co"))
-        .unwrap_or(false)
+    let Ok(url) = url::Url::parse(link) else {
+        return false;
+    };
+
+    let Some(host) = url.host_str().map(str::to_ascii_lowercase) else {
+        return false;
+    };
+
+    host == "dl.fuckingfast.co"
+        || host.ends_with(".dl.fuckingfast.co")
+        || ((host == "fuckingfast.co" || host.ends_with(".fuckingfast.co"))
+            && url.path().starts_with("/dl/"))
 }
 
 pub(crate) fn extract_file_id(link: &str) -> Option<String> {
@@ -154,8 +186,17 @@ pub(crate) fn extract_file_id(link: &str) -> Option<String> {
 }
 
 pub(crate) fn normalize_redirect_url(base: &str, redirect: &str) -> Result<String, ProviderError> {
-    if redirect.trim().is_empty() {
+    let redirect = redirect.trim();
+    if redirect.is_empty() {
         return Err(ProviderError::Parse("Empty FuckingFast redirect".into()));
+    }
+
+    if redirect.starts_with('{') {
+        let value = serde_json::from_str::<serde_json::Value>(redirect)
+            .map_err(|error| ProviderError::Parse(format!("Invalid HX-Location JSON: {error}")))?;
+        if let Some(path) = value.get("path").and_then(|path| path.as_str()) {
+            return normalize_redirect_url(base, path);
+        }
     }
 
     if let Ok(url) = url::Url::parse(redirect) {
@@ -170,8 +211,17 @@ pub(crate) fn normalize_redirect_url(base: &str, redirect: &str) -> Result<Strin
 }
 
 pub(crate) fn extract_direct_download_url(body: &str) -> Option<String> {
-    let re = Regex::new(r#"https?://dl\.fuckingfast\.co/[^\s"'<>]+"#).ok()?;
-    re.find(body).map(|m| m.as_str().to_string())
+    let normalized = body.replace(r"\/", "/").replace("&amp;", "&");
+    let re = Regex::new(r#"https?://(?:dl\.fuckingfast\.co|fuckingfast\.co/dl)/[^\s"'<>\\]+"#)
+        .ok()?;
+    re.find(&normalized).map(|m| m.as_str().to_string())
+}
+
+fn is_rate_limited_body(body: &str) -> bool {
+    let lower = body.to_ascii_lowercase();
+    lower.contains("rate limited")
+        || lower.contains("rate limit")
+        || lower.contains("too many requests")
 }
 
 #[cfg(test)]
