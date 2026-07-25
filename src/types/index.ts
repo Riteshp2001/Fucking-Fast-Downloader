@@ -13,6 +13,8 @@ export interface Aria2Task {
       name?: string;
     };
   };
+  errorCode?: string;
+  errorMessage?: string;
   files: Array<{
     completedLength: string;
     index: string;

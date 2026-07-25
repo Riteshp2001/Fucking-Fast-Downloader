@@ -18,10 +18,13 @@ interface TaskState {
 
 const mapTask = (task: Aria2Task): DownloadTask => {
   const displayName = task.bittorrent?.info?.name || task.title || task.files[0]?.path.split(/[\/\\]/).pop() || 'Unknown';
+  const total = BigInt(task.totalLength || '0');
+  const completed = BigInt(task.completedLength || '0');
+  const progress = total > 0 ? Number((completed * BigInt(100)) / total) : 0;
   return {
     ...task,
     displayName,
-    progress: formatProgress(task.completedLength, task.totalLength),
+    progress,
     speedFormatted: formatSpeed(task.downloadSpeed),
     etaFormatted: formatEta(task.totalLength, task.completedLength, task.downloadSpeed),
     sizeFormatted: bytesToSize(task.totalLength)

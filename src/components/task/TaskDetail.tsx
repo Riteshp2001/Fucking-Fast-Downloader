@@ -6,6 +6,30 @@ import { bytesToSize, formatSpeed, formatEta, formatProgress } from '@/lib/utils
 import { pauseTask, unpauseTask, removeTask } from '@/lib/tauri';
 import { CloseCircle, Pause, Play, TrashBinTrash, FileText } from '@solar-icons/react';
 
+const aria2ErrorMessages: Record<string, string> = {
+  '1': 'Unknown error occurred',
+  '2': 'Timeout — the server did not respond',
+  '3': 'Resource not found (404)',
+  '4': 'Forbidden — access denied (403)',
+  '5': 'File not found on server',
+  '6': 'Too many redirects',
+  '7': 'Server returned an error',
+  '8': 'Connection was reset',
+  '9': 'Disk full — not enough space',
+  '10': 'File write permission denied',
+  '11': 'Name resolution failed',
+  '12': 'TLS/SSL handshake failed',
+  '13': 'Connection refused by server',
+  '20': 'Invalid torrent file',
+  '21': 'Magnet link could not be parsed',
+  '22': 'No peers found for torrent',
+};
+
+function getAria2ErrorMessage(errorCode?: string): string | null {
+  if (!errorCode) return null;
+  return aria2ErrorMessages[errorCode] || `Error code: ${errorCode}`;
+}
+
 interface TaskDetailProps {
   task: Aria2Task;
   onClose: () => void;
@@ -90,6 +114,18 @@ export default function TaskDetail({ task, onClose }: TaskDetailProps) {
           {infoCard('GID', task.gid)}
           {infoCard('Connections', task.connections || '0')}
         </div>
+
+        {task.status === 'error' && (() => {
+          const errMsg = getAria2ErrorMessage(task.errorCode);
+          const detail = errMsg || task.errorMessage || null;
+          if (!detail) return null;
+          return (
+            <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-3">
+              <label className="text-[9px] text-red-400 uppercase tracking-wider font-bold mb-1 block">Error</label>
+              <p className="text-xs font-mono text-red-300/90 break-all">{detail}</p>
+            </div>
+          );
+        })()}
 
         {task.files && task.files.length > 0 && (
           <div>

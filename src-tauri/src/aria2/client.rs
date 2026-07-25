@@ -344,6 +344,18 @@ impl Aria2Client {
             .ok_or_else(|| AppError::Aria2("aria2 multicall returned null result".into()))
     }
 
+    /// Changes the position of a task in the queue.
+    /// `how`: "POS_SET" (absolute), "POS_CUR" (relative), "POS_END" (from end)
+    pub async fn change_position(
+        &self,
+        gid: &str,
+        pos: i64,
+        how: &str,
+    ) -> Result<i64, AppError> {
+        self.call("changePosition", vec![gid.into(), pos.into(), how.into()])
+            .await
+    }
+
     /// Graceful pause-all.
     pub async fn pause_all(&self) -> Result<String, AppError> {
         self.call("pauseAll", vec![]).await

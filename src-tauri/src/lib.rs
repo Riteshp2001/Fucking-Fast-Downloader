@@ -24,7 +24,7 @@ use crate::commands::power::ShutdownCancelState;
 use crate::commands::updater::{DownloadedUpdate, UpdateCancelState};
 use engine::EngineState;
 use services::port_guard::DEFAULT_RPC_PORT;
-use tauri::{Emitter, Manager};
+use tauri::{Emitter, Listener, Manager};
 #[cfg(target_os = "macos")]
 use tauri_plugin_deep_link::DeepLinkExt;
 use tauri_plugin_store::StoreExt;
@@ -260,6 +260,12 @@ fn setup_app(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         let history_db = history::HistoryDb::open(&db_path)
             .map_err(|e| format!("Failed to open history.db: {e}"))?;
         app.manage(history::HistoryDbState(std::sync::Arc::new(history_db)));
+    }
+
+    // Cloudflare/DDoS-Guard handler — persists captcha cookies for provider requests.
+    {
+        let app_data = app.path().app_data_dir()?;
+        app.manage(providers::cloudflare::CloudflareHandler::new(&app_data));
     }
 
     #[cfg(target_os = "macos")]
@@ -868,6 +874,8 @@ pub fn run() {
             commands::aria2_get_option,
             commands::aria2_change_option,
             commands::aria2_get_files,
+            commands::aria2_change_position,
+            commands::aria2_set_task_limit,
             commands::aria2_add_uri,
             commands::aria2_add_torrent,
             commands::aria2_ed2k_search,

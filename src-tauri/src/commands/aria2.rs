@@ -406,6 +406,39 @@ fn take_ed2k_search_dir(_app: &AppHandle, gid: &str) -> Option<PathBuf> {
     ed2k_search_dirs().lock().ok()?.remove(gid)
 }
 
+#[tauri::command]
+pub async fn aria2_change_position(
+    gid: String,
+    pos: i64,
+    how: String,
+    state: State<'_, Aria2State>,
+) -> Result<i64, String> {
+    if !is_safe_gid(&gid) {
+        return Err("Invalid GID".into());
+    }
+    state.0.change_position(&gid, pos, &how).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn aria2_set_task_limit(
+    gid: String,
+    download_limit: Option<String>,
+    upload_limit: Option<String>,
+    state: State<'_, Aria2State>,
+) -> Result<String, String> {
+    if !is_safe_gid(&gid) {
+        return Err("Invalid GID".into());
+    }
+    let mut opts = serde_json::Map::new();
+    if let Some(limit) = download_limit {
+        opts.insert("max-download-limit".into(), serde_json::Value::String(limit));
+    }
+    if let Some(limit) = upload_limit {
+        opts.insert("max-upload-limit".into(), serde_json::Value::String(limit));
+    }
+    state.0.change_option(&gid, serde_json::Value::Object(opts)).await.map_err(|e| e.to_string())
+}
+
 /// Forcefully remove a task by GID.
 #[tauri::command]
 pub async fn aria2_force_remove(
