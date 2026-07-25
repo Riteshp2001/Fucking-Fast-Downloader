@@ -1,5 +1,6 @@
 use crate::providers::error::ProviderError;
 use crate::providers::fitgirl::types::FitGirlPage;
+use crate::providers::SearchResult;
 use scraper::{ElementRef, Html, Selector};
 
 /// Parses a FitGirl game article HTML page.
@@ -37,6 +38,7 @@ pub fn parse_game_article(html: &str) -> Result<FitGirlPage, ProviderError> {
 
     // Magnet links
     let magnet_links = extract_magnet_links(&document);
+    let fuckingfast_links = extract_fuckingfast_links(&document);
 
     // Images from paragraphs 3-6
     let images = extract_images(&entry_content);
@@ -50,6 +52,7 @@ pub fn parse_game_article(html: &str) -> Result<FitGirlPage, ProviderError> {
         features,
         dlcs,
         magnet_links,
+        fuckingfast_links,
         images,
         repack_size,
     })
@@ -60,8 +63,7 @@ fn extract_section_list(html: &str, section_title: &str) -> Vec<String> {
     let doc = Html::parse_fragment(html);
 
     // Find heading containing the section title
-    let heading_sel = Selector::parse("strong, h3, h4")
-        .expect("Invalid heading selector");
+    let heading_sel = Selector::parse("strong, h3, h4").expect("Invalid heading selector");
 
     for heading in doc.select(&heading_sel) {
         let text: String = heading.text().collect();
@@ -70,14 +72,21 @@ fn extract_section_list(html: &str, section_title: &str) -> Vec<String> {
             let mut current = heading.next_sibling();
             while let Some(sibling) = current {
                 if sibling.value().is_element() {
-                    let is_ul = sibling.value().as_element().map_or(false, |e| e.name() == "ul");
+                    let is_ul = sibling
+                        .value()
+                        .as_element()
+                        .map_or(false, |e| e.name() == "ul");
                     if is_ul {
                         if let Some(ul_ref) = ElementRef::wrap(sibling) {
                             return ul_ref
                                 .text()
                                 .filter_map(|t| {
                                     let s = t.trim().to_string();
-                                    if s.is_empty() { None } else { Some(s) }
+                                    if s.is_empty() {
+                                        None
+                                    } else {
+                                        Some(s)
+                                    }
                                 })
                                 .collect();
                         }
@@ -94,12 +103,31 @@ fn extract_section_list(html: &str, section_title: &str) -> Vec<String> {
 
 /// Extracts magnet links from the document.
 fn extract_magnet_links(document: &Html) -> Vec<String> {
-    let magnet_sel = Selector::parse("a[href^=\"magnet:?\"]")
-        .expect("Invalid magnet selector");
+    let magnet_sel = Selector::parse("a[href^=\"magnet:?\"]").expect("Invalid magnet selector");
     document
         .select(&magnet_sel)
         .filter_map(|a| a.attr("href").map(|h| h.to_string()))
         .collect()
+}
+
+/// Extracts unique FuckingFast share links from the document.
+fn extract_fuckingfast_links(document: &Html) -> Vec<String> {
+    let link_sel = Selector::parse("a[href]").expect("Invalid link selector");
+    let mut links = Vec::new();
+
+    for href in document.select(&link_sel).filter_map(|a| a.attr("href")) {
+        let lower = href.to_ascii_lowercase();
+        if !lower.contains("fuckingfast.co") || lower.contains("dl.fuckingfast.co") {
+            continue;
+        }
+
+        let href = href.trim().to_string();
+        if !links.iter().any(|existing| existing == &href) {
+            links.push(href);
+        }
+    }
+
+    links
 }
 
 /// Extracts images from the entry content paragraphs.
@@ -120,7 +148,10 @@ fn extract_images(entry_content: &scraper::ElementRef) -> Vec<String> {
 fn upscale_image_url(url: &str) -> String {
     if url.contains("wp-content") {
         // Proxy through wsrv.nl for WebP conversion + upscaling
-        format!("https://wsrv.nl/?url={}&output=webp&w=1920", urlencoding(url))
+        format!(
+            "https://wsrv.nl/?url={}&output=webp&w=1920",
+            urlencoding(url)
+        )
     } else {
         url.to_string()
     }
@@ -145,38 +176,64 @@ fn extract_description(document: &Html, _content_sel: &Selector) -> String {
 
 /// Extracts repack size from text patterns like "Size: 5.6 GB" or "Repack Size: 5.6 GB".
 fn extract_repack_size(html: &str) -> Option<String> {
-    let re = regex::Regex::new(r"(?i)(?:size|repack\s*size)[:\s]+([\d.]+\s*(?:GB|MB|TB))")
-        .ok()?;
+    let re = regex::Regex::new(r"(?i)(?:size|repack\s*size)[:\s]+([\d.]+\s*(?:GB|MB|TB))").ok()?;
     re.captures(html)
         .and_then(|c| c.get(1).map(|m| m.as_str().to_string()))
 }
 
 /// Parses search results HTML from FitGirl search page.
-pub fn parse_search_results(
-    html: &str,
-) -> Result<Vec<crate::providers::SearchResult>, ProviderError> {
+pub fn parse_article_search_result(html: &str, url: &str) -> Result<SearchResult, ProviderError> {
+    let page = parse_game_article(html)?;
+    let image = page.images.first().cloned();
+
+    Ok(SearchResult {
+        title: page.title,
+        url: url.to_string(),
+        image,
+        description: if page.description.is_empty() {
+            None
+        } else {
+            Some(page.description)
+        },
+        category: None,
+        size: page.repack_size,
+    })
+}
+
+/// Parses search results HTML from FitGirl search page.
+pub fn parse_search_results(html: &str) -> Result<Vec<SearchResult>, ProviderError> {
     let document = Html::parse_document(html);
-    let article_sel = Selector::parse("article, .entry-title")
+    let article_sel = Selector::parse("article")
         .map_err(|_| ProviderError::Parse("Invalid search selector".into()))?;
 
     let link_sel = Selector::parse("a").expect("Invalid a selector");
+    let title_sel = Selector::parse(".entry-title a, h1 a, h2 a, a[rel=\"bookmark\"]")
+        .expect("Invalid title selector");
+    let img_sel = Selector::parse("img").expect("Invalid img selector");
 
-    let results: Vec<crate::providers::SearchResult> = document
+    let mut results: Vec<SearchResult> = document
         .select(&article_sel)
         .filter_map(|article| {
-            let link = article.select(&link_sel).next()?;
+            let link = article
+                .select(&title_sel)
+                .next()
+                .or_else(|| article.select(&link_sel).next())?;
             let title: String = link.text().collect();
             let href = link.attr("href")?.to_string();
+            let title = title.trim().to_string();
+            if title.is_empty() || href.is_empty() {
+                return None;
+            }
 
             // Try to find a post thumbnail
             let img = article
-                .select(&Selector::parse("img").expect("Invalid img selector"))
+                .select(&img_sel)
                 .next()
                 .and_then(|img| img.attr("src"))
                 .map(|s| upscale_image_url(s));
 
-            Some(crate::providers::SearchResult {
-                title: title.trim().to_string(),
+            Some(SearchResult {
+                title,
                 url: href,
                 image: img,
                 description: None,
@@ -187,9 +244,30 @@ pub fn parse_search_results(
         .collect();
 
     if results.is_empty() {
-        return Err(ProviderError::NotFound(
-            "No search results found".into(),
-        ));
+        let entry_title_sel =
+            Selector::parse(".entry-title a").expect("Invalid entry-title selector");
+        results = document
+            .select(&entry_title_sel)
+            .filter_map(|link| {
+                let title = link.text().collect::<String>().trim().to_string();
+                let href = link.attr("href")?.to_string();
+                if title.is_empty() || href.is_empty() {
+                    return None;
+                }
+                Some(SearchResult {
+                    title,
+                    url: href,
+                    image: None,
+                    description: None,
+                    category: None,
+                    size: None,
+                })
+            })
+            .collect();
+    }
+
+    if results.is_empty() {
+        return Err(ProviderError::NotFound("No search results found".into()));
     }
 
     Ok(results)
@@ -218,6 +296,17 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_article_search_result_extracts_summary() {
+        let result =
+            parse_article_search_result(ARTICLE_FIXTURE, "https://fitgirl-repacks.site/test-game/")
+                .expect("should parse");
+        assert_eq!(result.title, "Test Game â€” Full Repack");
+        assert_eq!(result.url, "https://fitgirl-repacks.site/test-game/");
+        assert_eq!(result.size, Some("5.6 GB".into()));
+        assert!(result.image.as_ref().unwrap().contains("wsrv.nl"));
+    }
+
+    #[test]
     fn test_parse_game_article_extracts_title() {
         let page = parse_game_article(ARTICLE_FIXTURE).expect("should parse");
         assert_eq!(page.title, "Test Game — Full Repack");
@@ -239,6 +328,18 @@ mod tests {
     fn test_parse_game_article_extracts_magnet_links() {
         let page = parse_game_article(ARTICLE_FIXTURE).expect("should parse");
         assert!(page.magnet_links.iter().any(|m| m.starts_with("magnet:")));
+    }
+
+    #[test]
+    fn test_parse_game_article_extracts_unique_fuckingfast_links() {
+        let page = parse_game_article(ARTICLE_FIXTURE).expect("should parse");
+        assert_eq!(
+            page.fuckingfast_links,
+            vec![
+                "https://fuckingfast.co/test-part-1".to_string(),
+                "https://fuckingfast.co/test-part-2?download=1".to_string(),
+            ]
+        );
     }
 
     #[test]

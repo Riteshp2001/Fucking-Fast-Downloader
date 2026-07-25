@@ -18,11 +18,16 @@ export default function GameDetailPanel({ result, onClose, onAddDownload }: Game
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    setError(null);
 
-    fetchGameDetail('fitgirl', result.url)
-      .then((d) => { if (!cancelled) setDetail(d); })
+    Promise.resolve()
+      .then(() => {
+        if (cancelled) return null;
+        setLoading(true);
+        setError(null);
+        setDetail(null);
+        return fetchGameDetail('fitgirl', result.url);
+      })
+      .then((d) => { if (!cancelled && d) setDetail(d); })
       .catch((err) => { if (!cancelled) setError(err instanceof Error ? err.message : String(err)); })
       .finally(() => { if (!cancelled) setLoading(false); });
 
@@ -108,6 +113,44 @@ export default function GameDetailPanel({ result, onClose, onAddDownload }: Game
                       >
                         <Magnet size={14} />
                         <span className="truncate">Magnet Link {i + 1}</span>
+                        <DownloadSquare size={14} className="ml-auto shrink-0" />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {detail.direct_links.length > 0 && (
+                <div>
+                  <h3 className="text-xs font-bold text-[var(--md-sys-color-on-surface)] mb-2">Direct Links</h3>
+                  <div className="space-y-2">
+                    {detail.direct_links.map((link, i) => (
+                      <button
+                        key={i}
+                        onClick={() => onAddDownload(link)}
+                        className="w-full flex items-center gap-2 px-3 py-2 rounded-xl bg-teal-500/10 border border-teal-500/30 text-teal-400 hover:bg-teal-500/20 text-xs transition-all cursor-pointer"
+                      >
+                        <DownloadSquare size={14} />
+                        <span className="truncate">Direct Link {i + 1}</span>
+                        <DownloadSquare size={14} className="ml-auto shrink-0" />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {detail.raw_fuckingfast_links.length > 0 && (
+                <div>
+                  <h3 className="text-xs font-bold text-[var(--md-sys-color-on-surface)] mb-2">FuckingFast Links</h3>
+                  <div className="space-y-2">
+                    {detail.raw_fuckingfast_links.map((link, i) => (
+                      <button
+                        key={i}
+                        onClick={() => onAddDownload(link)}
+                        className="w-full flex items-center gap-2 px-3 py-2 rounded-xl bg-sky-500/10 border border-sky-500/30 text-sky-400 hover:bg-sky-500/20 text-xs transition-all cursor-pointer"
+                      >
+                        <DownloadSquare size={14} />
+                        <span className="truncate">Resolve Part {i + 1}</span>
                         <DownloadSquare size={14} className="ml-auto shrink-0" />
                       </button>
                     ))}

@@ -14,6 +14,8 @@ export interface GameDetail {
   features: string[];
   dlcs: string[];
   magnet_links: string[];
+  direct_links: string[];
+  raw_fuckingfast_links: string[];
   repack_size?: string;
 }
 
