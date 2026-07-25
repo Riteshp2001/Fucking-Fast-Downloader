@@ -24,7 +24,7 @@ use crate::commands::power::ShutdownCancelState;
 use crate::commands::updater::{DownloadedUpdate, UpdateCancelState};
 use engine::EngineState;
 use services::port_guard::DEFAULT_RPC_PORT;
-use tauri::{Emitter, Listener, Manager};
+use tauri::{Emitter, Manager};
 #[cfg(target_os = "macos")]
 use tauri_plugin_deep_link::DeepLinkExt;
 use tauri_plugin_store::StoreExt;
