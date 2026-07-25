@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { Aria2Task, DownloadTask } from '@/types';
-import { bytesToSize, formatSpeed, formatEta, formatProgress } from '@/lib/utils';
+import { bytesToSize, formatSpeed, formatEta } from '@/lib/utils';
 
 type FilterType = 'all' | 'active' | 'waiting' | 'stopped';
 

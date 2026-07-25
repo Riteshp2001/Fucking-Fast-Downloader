@@ -346,12 +346,7 @@ impl Aria2Client {
 
     /// Changes the position of a task in the queue.
     /// `how`: "POS_SET" (absolute), "POS_CUR" (relative), "POS_END" (from end)
-    pub async fn change_position(
-        &self,
-        gid: &str,
-        pos: i64,
-        how: &str,
-    ) -> Result<i64, AppError> {
+    pub async fn change_position(&self, gid: &str, pos: i64, how: &str) -> Result<i64, AppError> {
         self.call("changePosition", vec![gid.into(), pos.into(), how.into()])
             .await
     }

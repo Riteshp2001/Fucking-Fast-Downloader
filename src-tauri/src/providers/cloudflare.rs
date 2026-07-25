@@ -53,11 +53,7 @@ impl CloudflareHandler {
             .join("; ")
     }
 
-    pub async fn solve_captcha(
-        &self,
-        app: &AppHandle,
-        url: &str,
-    ) -> Result<(), ProviderError> {
+    pub async fn solve_captcha(&self, app: &AppHandle, url: &str) -> Result<(), ProviderError> {
         let label = "cloudflare-captcha";
 
         if let Some(w) = app.get_webview_window(label) {
@@ -75,8 +71,8 @@ impl CloudflareHandler {
             }
         });
 
-        let parsed_url = url::Url::parse(url)
-            .map_err(|_| ProviderError::Internal("Invalid URL".into()))?;
+        let parsed_url =
+            url::Url::parse(url).map_err(|_| ProviderError::Internal("Invalid URL".into()))?;
 
         let builder = WebviewWindowBuilder::new(app, label, WebviewUrl::External(parsed_url))
             .title("FitGirl - DDoS-Guard Verification")
@@ -84,9 +80,9 @@ impl CloudflareHandler {
             .resizable(true)
             .center();
 
-        let window = builder
-            .build()
-            .map_err(|e| ProviderError::Internal(format!("Failed to create captcha window: {e}")))?;
+        let window = builder.build().map_err(|e| {
+            ProviderError::Internal(format!("Failed to create captcha window: {e}"))
+        })?;
 
         let js = r#"
             (function() {
@@ -111,9 +107,7 @@ impl CloudflareHandler {
 
         match tokio::time::timeout(std::time::Duration::from_secs(120), rx).await {
             Ok(Ok(payload)) => {
-                if let Ok(parsed) =
-                    serde_json::from_str::<serde_json::Value>(&payload)
-                {
+                if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&payload) {
                     if let Some(cookies_str) = parsed.get("cookies").and_then(|c| c.as_str()) {
                         if !cookies_str.is_empty() {
                             self.update_from_document_cookie(cookies_str, url).await;
@@ -163,9 +157,7 @@ impl CloudflareHandler {
                 let name = pair[..eq_pos].trim();
                 let value = pair[eq_pos + 1..].trim();
                 if name.starts_with("__ddg") {
-                    cookies
-                        .cookies
-                        .insert(name.to_string(), value.to_string());
+                    cookies.cookies.insert(name.to_string(), value.to_string());
                 }
             }
         }

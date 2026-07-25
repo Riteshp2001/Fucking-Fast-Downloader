@@ -1,3 +1,4 @@
+pub mod fuckingfast;
 pub mod parser;
 pub mod types;
 
@@ -11,6 +12,7 @@ use crate::providers::cache::ProviderCache;
 use crate::providers::cloudflare::CloudflareHandler;
 use crate::providers::error::ProviderError;
 use crate::providers::{GameDetail, Provider, SearchResult};
+use fuckingfast::FuckingFastResolver;
 
 const BASE_URL: &str = "https://fitgirl-repacks.site";
 const CACHE_TTL_SEARCH: u64 = 3600;
@@ -22,6 +24,7 @@ pub struct FitGirlProvider {
     cache: Arc<Mutex<ProviderCache>>,
     cloudflare: Arc<Mutex<CloudflareHandler>>,
     app_handle: AppHandle,
+    fuckingfast: FuckingFastResolver,
 }
 
 impl FitGirlProvider {
@@ -41,6 +44,7 @@ impl FitGirlProvider {
             cache: Arc::new(Mutex::new(cache)),
             cloudflare,
             app_handle,
+            fuckingfast: FuckingFastResolver::new(),
         }
     }
 
@@ -61,11 +65,20 @@ impl FitGirlProvider {
             let resp = req.send().await?;
 
             if CloudflareHandler::is_guarded(&resp) {
-                log::warn!("provider:fitgirl: ddos-guard detected on attempt {}/{}", attempt + 1, MAX_RETRIES);
+                log::warn!(
+                    "provider:fitgirl: ddos-guard detected on attempt {}/{}",
+                    attempt + 1,
+                    MAX_RETRIES
+                );
 
-                if let Some(set_cookie) = resp.headers().get("set-cookie").and_then(|v| v.to_str().ok()) {
+                if let Some(set_cookie) = resp
+                    .headers()
+                    .get("set-cookie")
+                    .and_then(|v| v.to_str().ok())
+                {
                     let cf = self.cloudflare.lock().await;
-                    cf.update_from_set_cookie(set_cookie, "fitgirl-repacks.site").await;
+                    cf.update_from_set_cookie(set_cookie, "fitgirl-repacks.site")
+                        .await;
                 }
 
                 {
@@ -84,7 +97,10 @@ impl FitGirlProvider {
                     .and_then(|s| s.parse::<u64>().ok())
                     .unwrap_or(5);
 
-                log::warn!("provider:fitgirl: rate limited, retry after {}s", retry_after);
+                log::warn!(
+                    "provider:fitgirl: rate limited, retry after {}s",
+                    retry_after
+                );
                 tokio::time::sleep(std::time::Duration::from_secs(retry_after)).await;
                 continue;
             }
@@ -92,7 +108,10 @@ impl FitGirlProvider {
             if !resp.status().is_success() {
                 last_error = ProviderError::Http(
                     resp.status().as_u16(),
-                    resp.status().canonical_reason().unwrap_or("Unknown").to_string(),
+                    resp.status()
+                        .canonical_reason()
+                        .unwrap_or("Unknown")
+                        .to_string(),
                 );
                 continue;
             }
@@ -124,9 +143,37 @@ impl Provider for FitGirlProvider {
             }
         }
 
+        if let Some(article_url) = fitgirl_article_url_from_query(query) {
+            let html = self.fetch_with_cloudflare(&article_url).await?;
+            let result = parser::parse_article_search_result(&html, &article_url)?;
+            let results = vec![result];
+            {
+                let cache = self.cache.lock().await;
+                let _ = cache.set(&cache_key, &results, CACHE_TTL_SEARCH);
+            }
+            return Ok(results);
+        }
+
         let search_url = format!("{BASE_URL}/?s={}", urlencoding::encode(query));
         let html = self.fetch_with_cloudflare(&search_url).await?;
-        let results = parser::parse_search_results(&html)?;
+        let results = match parser::parse_search_results(&html) {
+            Ok(results) => results,
+            Err(search_error) => {
+                if let Some(article_url) = fitgirl_slug_url_from_query(query) {
+                    match self.fetch_with_cloudflare(&article_url).await {
+                        Ok(article_html) => {
+                            vec![parser::parse_article_search_result(
+                                &article_html,
+                                &article_url,
+                            )?]
+                        }
+                        Err(_) => return Err(search_error),
+                    }
+                } else {
+                    return Err(search_error);
+                }
+            }
+        };
 
         {
             let cache = self.cache.lock().await;
@@ -156,6 +203,10 @@ impl Provider for FitGirlProvider {
             features: page.features,
             dlcs: page.dlcs,
             magnet_links: page.magnet_links,
+            direct_links: self
+                .resolve_fuckingfast_links(&page.fuckingfast_links)
+                .await,
+            raw_fuckingfast_links: page.fuckingfast_links,
             repack_size: page.repack_size,
         };
 
@@ -165,5 +216,87 @@ impl Provider for FitGirlProvider {
         }
 
         Ok(detail)
+    }
+}
+
+fn fitgirl_article_url_from_query(query: &str) -> Option<String> {
+    let parsed = url::Url::parse(query.trim()).ok()?;
+    let host = parsed.host_str()?.to_ascii_lowercase();
+    if host != "fitgirl-repacks.site" && !host.ends_with(".fitgirl-repacks.site") {
+        return None;
+    }
+
+    let mut url = parsed;
+    url.set_query(None);
+    url.set_fragment(None);
+    Some(url.to_string())
+}
+
+fn fitgirl_slug_url_from_query(query: &str) -> Option<String> {
+    let trimmed = query.trim();
+    if trimmed.contains("://") {
+        return None;
+    }
+
+    let mut slug = String::new();
+    let mut last_was_dash = false;
+    for ch in trimmed.chars().flat_map(char::to_lowercase) {
+        if ch.is_ascii_alphanumeric() {
+            slug.push(ch);
+            last_was_dash = false;
+        } else if !last_was_dash && !slug.is_empty() {
+            slug.push('-');
+            last_was_dash = true;
+        }
+    }
+
+    while slug.ends_with('-') {
+        slug.pop();
+    }
+
+    if slug.is_empty() {
+        None
+    } else {
+        Some(format!("{BASE_URL}/{slug}/"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{fitgirl_article_url_from_query, fitgirl_slug_url_from_query};
+
+    #[test]
+    fn accepts_direct_fitgirl_article_url() {
+        assert_eq!(
+            fitgirl_article_url_from_query("https://fitgirl-repacks.site/lifted/?x=1#comments"),
+            Some("https://fitgirl-repacks.site/lifted/".to_string())
+        );
+    }
+
+    #[test]
+    fn builds_slug_url_from_plain_query() {
+        assert_eq!(
+            fitgirl_slug_url_from_query("Lifted"),
+            Some("https://fitgirl-repacks.site/lifted/".to_string())
+        );
+    }
+}
+
+impl FitGirlProvider {
+    async fn resolve_fuckingfast_links(&self, links: &[String]) -> Vec<String> {
+        let mut resolved = Vec::new();
+
+        for link in links {
+            match self.fuckingfast.resolve(link).await {
+                Ok(url) => resolved.push(url),
+                Err(error) => {
+                    log::warn!(
+                        "provider:fitgirl: failed to resolve FuckingFast link {link}: {error}"
+                    );
+                }
+            }
+        }
+
+        resolved
     }
 }

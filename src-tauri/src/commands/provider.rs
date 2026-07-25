@@ -1,4 +1,5 @@
 use crate::providers::cloudflare::CloudflareHandler;
+use crate::providers::fitgirl::fuckingfast::FuckingFastResolver;
 use crate::providers::{GameDetail, ProviderRegistry, SearchResult};
 use std::sync::Arc;
 use tauri::{AppHandle, State};
@@ -34,6 +35,14 @@ pub async fn fetch_game_detail(
     let registry = registry.lock().await;
     registry
         .fetch_details(&provider, &url)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn resolve_fuckingfast_link(url: String) -> Result<String, String> {
+    FuckingFastResolver::new()
+        .resolve(&url)
         .await
         .map_err(|e| e.to_string())
 }

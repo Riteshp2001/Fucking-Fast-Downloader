@@ -18,48 +18,67 @@ export default function Home() {
   useTaskPolling();
 
   const [isAddOpen, setIsAddOpen] = useState(false);
+  const [pendingAddUrls, setPendingAddUrls] = useState<string[]>([]);
   const selectedTask = useTaskStore((state) => state.selectedTask);
   const setSelectedTask = useTaskStore((state) => state.setSelectedTask);
+
+  const openAddDialog = (urls: string[] = []) => {
+    setPendingAddUrls(urls);
+    setIsAddOpen(true);
+  };
+
+  const closeAddDialog = () => {
+    setIsAddOpen(false);
+    setPendingAddUrls([]);
+  };
 
   return (
     <AppLayout>
       {({ activeView }) => {
+        let content: React.ReactNode;
+
         if (activeView === 'preferences') {
-          return <PreferencePanel />;
+          content = <PreferencePanel />;
+        } else if (activeView === 'about') {
+          content = <AboutPanel />;
+        } else if (activeView === 'browse') {
+          content = <BrowseView onOpenAddDialog={openAddDialog} />;
+        } else {
+          const statusFilterMap: Record<string, 'all' | 'active' | 'complete' | 'error'> = {
+            downloads: 'all',
+            active: 'active',
+            completed: 'complete',
+            errors: 'error',
+          };
+
+          const filter = statusFilterMap[activeView] || 'all';
+
+          content = (
+            <div className="flex flex-col h-full gap-4 relative">
+              <TaskControls onOpenAddDialog={() => openAddDialog()} />
+              <div className="flex-1 flex gap-4 overflow-hidden relative">
+                <div className="flex-1 overflow-hidden">
+                  <TaskList filter={filter} onOpenAddDialog={() => openAddDialog()} />
+                </div>
+                {selectedTask && (
+                  <div className="w-80 shrink-0 border-l border-[var(--md-sys-color-outline-variant)] bg-[var(--md-sys-color-surface-container)] rounded-[var(--md-sys-shape-corner-large)] p-4 overflow-y-auto z-10">
+                    <TaskDetail task={selectedTask} onClose={() => setSelectedTask(null)} />
+                  </div>
+                )}
+              </div>
+            </div>
+          );
         }
-
-        if (activeView === 'about') {
-          return <AboutPanel />;
-        }
-
-        if (activeView === 'browse') {
-          return <BrowseView onOpenAddDialog={() => setIsAddOpen(true)} />;
-        }
-
-        const statusFilterMap: Record<string, 'all' | 'active' | 'complete' | 'error'> = {
-          downloads: 'all',
-          active: 'active',
-          completed: 'complete',
-          errors: 'error',
-        };
-
-        const filter = statusFilterMap[activeView] || 'all';
 
         return (
-          <div className="flex flex-col h-full gap-4 relative">
-            <TaskControls onOpenAddDialog={() => setIsAddOpen(true)} />
-            <div className="flex-1 flex gap-4 overflow-hidden relative">
-              <div className="flex-1 overflow-hidden">
-                <TaskList filter={filter} onOpenAddDialog={() => setIsAddOpen(true)} />
-              </div>
-              {selectedTask && (
-                <div className="w-80 shrink-0 border-l border-[var(--md-sys-color-outline-variant)] bg-[var(--md-sys-color-surface-container)] rounded-[var(--md-sys-shape-corner-large)] p-4 overflow-y-auto z-10">
-                  <TaskDetail task={selectedTask} onClose={() => setSelectedTask(null)} />
-                </div>
-              )}
-            </div>
-            <AddTaskDialog isOpen={isAddOpen} onClose={() => setIsAddOpen(false)} />
-          </div>
+          <>
+            {content}
+            <AddTaskDialog
+              isOpen={isAddOpen}
+              onClose={closeAddDialog}
+              initialUrls={pendingAddUrls}
+            />
+          </>
         );
       }}
     </AppLayout>

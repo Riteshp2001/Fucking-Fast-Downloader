@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState } from 'react';
-import { addUri } from '@/lib/tauri';
+import React, { useEffect, useState } from 'react';
+import { addUri, resolveFuckingFastLink } from '@/lib/tauri';
 import {
   CloseCircle, AltArrowDown, AltArrowRight, AddSquare,
   TrashBinMinimalistic, ClipboardText, CheckCircle
@@ -10,6 +10,7 @@ import {
 interface AddTaskDialogProps {
   isOpen: boolean;
   onClose: () => void;
+  initialUrls?: string[];
 }
 
 interface ParsedUrl {
@@ -58,13 +59,32 @@ function parseUrlsFromText(text: string): ParsedUrl[] {
   });
 }
 
-export default function AddTaskDialog({ isOpen, onClose }: AddTaskDialogProps) {
+function isFuckingFastShareUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.toLowerCase();
+    return (host === 'fuckingfast.co' || host.endsWith('.fuckingfast.co')) && !host.startsWith('dl.');
+  } catch {
+    return false;
+  }
+}
+
+export default function AddTaskDialog({ isOpen, onClose, initialUrls = [] }: AddTaskDialogProps) {
   const [urlsText, setUrlsText] = useState('');
   const [outName, setOutName] = useState('');
   const [connections, setConnections] = useState(16);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    Promise.resolve().then(() => {
+      setUrlsText(initialUrls.join('\n'));
+      setErrorMsg('');
+    });
+  }, [isOpen, initialUrls]);
 
   if (!isOpen) return null;
 
@@ -103,10 +123,13 @@ export default function AddTaskDialog({ isOpen, onClose }: AddTaskDialogProps) {
 
     try {
       for (const url of urls) {
+        const downloadUrl = isFuckingFastShareUrl(url)
+          ? await resolveFuckingFastLink(url)
+          : url;
         const options: Record<string, unknown> = {};
         if (outName.trim()) options['out'] = outName.trim();
         if (connections) options['max-connection-per-server'] = String(connections);
-        await addUri(url, options);
+        await addUri(downloadUrl, options);
       }
       setUrlsText('');
       setOutName('');

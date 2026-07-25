@@ -51,7 +51,12 @@ export const searchProvider = async (provider: string, query: string): Promise<S
   isTauri() ? invoke<SearchResult[]>('search_provider', { provider, query }) : [];
 
 export const fetchGameDetail = async (provider: string, url: string): Promise<GameDetail> =>
-  isTauri() ? invoke<GameDetail>('fetch_game_detail', { provider, url }) : { title: '', images: [], description: '', features: [], dlcs: [], magnet_links: [] };
+  isTauri()
+    ? invoke<GameDetail>('fetch_game_detail', { provider, url })
+    : { title: '', images: [], description: '', features: [], dlcs: [], magnet_links: [], direct_links: [], raw_fuckingfast_links: [] };
+
+export const resolveFuckingFastLink = async (url: string): Promise<string> =>
+  isTauri() ? invoke<string>('resolve_fuckingfast_link', { url }) : url;
 
 export const solveProviderCaptcha = async (provider: string, url: string) =>
   isTauri() && invoke('solve_provider_captcha', { provider, url });

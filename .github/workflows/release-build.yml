@@ -51,6 +51,9 @@ jobs:
     needs: verify
     runs-on: ${{ matrix.os }}
     timeout-minutes: 65
+    env:
+      HAS_WINDOWS_SIGNING: ${{ secrets.WINDOWS_CERTIFICATE != '' && secrets.WINDOWS_CERTIFICATE_PASSWORD != '' && vars.WINDOWS_CERTIFICATE_THUMBPRINT != '' }}
+      HAS_MACOS_SIGNING: ${{ secrets.APPLE_CERTIFICATE != '' && secrets.APPLE_CERTIFICATE_PASSWORD != '' && secrets.KEYCHAIN_PASSWORD != '' && secrets.APPLE_ID != '' && secrets.APPLE_PASSWORD != '' && secrets.APPLE_TEAM_ID != '' }}
     strategy:
       fail-fast: false
       matrix:
@@ -99,15 +102,12 @@ jobs:
             exit 1
           }
       - name: Import Windows code-signing certificate
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && env.HAS_WINDOWS_SIGNING == 'true'
         shell: pwsh
         env:
           WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
           WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
         run: |
-          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE) -or [string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE_PASSWORD)) {
-            throw 'WINDOWS_CERTIFICATE and WINDOWS_CERTIFICATE_PASSWORD are required for a publishable Windows release.'
-          }
           $certificateDirectory = Join-Path $env:RUNNER_TEMP 'ff-downloader-certificate'
           New-Item -ItemType Directory -Path $certificateDirectory -Force | Out-Null
           $encodedCertificate = Join-Path $certificateDirectory 'certificate.base64'
@@ -117,20 +117,21 @@ jobs:
           Import-PfxCertificate -FilePath $certificatePath -CertStoreLocation Cert:\CurrentUser\My -Password (ConvertTo-SecureString -String $env:WINDOWS_CERTIFICATE_PASSWORD -Force -AsPlainText) | Out-Null
           Remove-Item -LiteralPath $certificateDirectory -Recurse -Force
       - name: Create Windows signing configuration
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && env.HAS_WINDOWS_SIGNING == 'true'
         shell: pwsh
         env:
           WINDOWS_CERTIFICATE_THUMBPRINT: ${{ vars.WINDOWS_CERTIFICATE_THUMBPRINT }}
-          WINDOWS_TIMESTAMP_URL: ${{ vars.WINDOWS_TIMESTAMP_URL }}
+          WINDOWS_TIMESTAMP_URL: ${{ vars.WINDOWS_TIMESTAMP_URL || 'http://timestamp.digicert.com' }}
         run: |
-          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE_THUMBPRINT) -or [string]::IsNullOrWhiteSpace($env:WINDOWS_TIMESTAMP_URL)) {
-            throw 'WINDOWS_CERTIFICATE_THUMBPRINT and WINDOWS_TIMESTAMP_URL repository variables are required for a publishable Windows release.'
-          }
           @{ bundle = @{ windows = @{ certificateThumbprint = $env:WINDOWS_CERTIFICATE_THUMBPRINT; digestAlgorithm = 'sha256'; timestampUrl = $env:WINDOWS_TIMESTAMP_URL } } } |
             ConvertTo-Json -Depth 5 |
             Set-Content -Path src-tauri/tauri.windows.release.conf.json -Encoding utf8
+      - name: Note unsigned Windows release
+        if: runner.os == 'Windows' && env.HAS_WINDOWS_SIGNING != 'true'
+        shell: pwsh
+        run: Write-Host 'Windows certificate secrets/variables are not configured; building unsigned Windows artifacts.'
       - name: Import macOS signing certificate
-        if: runner.os == 'macOS'
+        if: runner.os == 'macOS' && env.HAS_MACOS_SIGNING == 'true'
         shell: bash
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
@@ -141,9 +142,6 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           set -euo pipefail
-          for name in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD KEYCHAIN_PASSWORD APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
-            [[ -n "${!name}" ]] || { echo "$name is required for a publishable macOS release." >&2; exit 1; }
-          done
           keychain_path="$RUNNER_TEMP/ff-downloader-build.keychain-db"
           certificate_path="$RUNNER_TEMP/ff-downloader-certificate.p12"
           echo "$APPLE_CERTIFICATE" | base64 --decode > "$certificate_path"
@@ -157,6 +155,10 @@ jobs:
           [[ -n "$signing_identity" ]] || { echo 'No valid macOS code-signing identity was imported.' >&2; exit 1; }
           echo "APPLE_SIGNING_IDENTITY=$signing_identity" >> "$GITHUB_ENV"
           rm -f "$certificate_path"
+      - name: Note unsigned macOS release
+        if: runner.os == 'macOS' && env.HAS_MACOS_SIGNING != 'true'
+        shell: bash
+        run: echo 'Apple signing/notarization secrets are not configured; building unsigned macOS artifacts.'
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
       - name: Build signed release artifacts
@@ -169,7 +171,13 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: pnpm tauri build --target ${{ matrix.target }} ${{ runner.os == 'Windows' && '--config src-tauri/tauri.windows.release.conf.json' || '' }}
+        shell: bash
+        run: |
+          config_args=()
+          if [[ "${RUNNER_OS}" == "Windows" && "${HAS_WINDOWS_SIGNING}" == "true" ]]; then
+            config_args=(--config src-tauri/tauri.windows.release.conf.json)
+          fi
+          pnpm tauri build --target "${{ matrix.target }}" "${config_args[@]}"
       - name: Upload release artifacts
         uses: actions/upload-artifact@v4
         with:

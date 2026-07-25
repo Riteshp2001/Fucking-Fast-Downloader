@@ -26,7 +26,10 @@ impl ProviderCache {
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs() as i64;
-        let _ = db.execute("DELETE FROM provider_cache WHERE expires_at < ?1", params![now]);
+        let _ = db.execute(
+            "DELETE FROM provider_cache WHERE expires_at < ?1",
+            params![now],
+        );
 
         Ok(Self { db })
     }
@@ -44,14 +47,19 @@ impl ProviderCache {
         serde_json::from_str(&value).ok()
     }
 
-    pub fn set<T: Serialize>(&self, key: &str, value: &T, ttl_secs: u64) -> Result<(), ProviderError> {
+    pub fn set<T: Serialize>(
+        &self,
+        key: &str,
+        value: &T,
+        ttl_secs: u64,
+    ) -> Result<(), ProviderError> {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs() as i64;
         let expires_at = now + ttl_secs as i64;
-        let json =
-            serde_json::to_string(value).map_err(|e| ProviderError::Cache(format!("Serialization error: {e}")))?;
+        let json = serde_json::to_string(value)
+            .map_err(|e| ProviderError::Cache(format!("Serialization error: {e}")))?;
         self.db
             .execute(
                 "INSERT OR REPLACE INTO provider_cache (key, value, expires_at) VALUES (?1, ?2, ?3)",
@@ -60,5 +68,4 @@ impl ProviderCache {
             .map_err(|e| ProviderError::Cache(format!("Failed to insert cache: {e}")))?;
         Ok(())
     }
-
 }

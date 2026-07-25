@@ -26,6 +26,8 @@ pub struct GameDetail {
     pub features: Vec<String>,
     pub dlcs: Vec<String>,
     pub magnet_links: Vec<String>,
+    pub direct_links: Vec<String>,
+    pub raw_fuckingfast_links: Vec<String>,
     pub repack_size: Option<String>,
 }
 
@@ -75,19 +77,31 @@ impl ProviderRegistry {
             .collect()
     }
 
-    pub async fn search(&self, provider: &str, query: &str) -> Result<Vec<SearchResult>, ProviderError> {
+    pub async fn search(
+        &self,
+        provider: &str,
+        query: &str,
+    ) -> Result<Vec<SearchResult>, ProviderError> {
         match self.get(provider) {
             Some(p) if p.enabled() => p.search(query).await,
             Some(_) => Err(ProviderError::Disabled),
-            None => Err(ProviderError::NotFound(format!("Provider '{provider}' not found"))),
+            None => Err(ProviderError::NotFound(format!(
+                "Provider '{provider}' not found"
+            ))),
         }
     }
 
-    pub async fn fetch_details(&self, provider: &str, url: &str) -> Result<GameDetail, ProviderError> {
+    pub async fn fetch_details(
+        &self,
+        provider: &str,
+        url: &str,
+    ) -> Result<GameDetail, ProviderError> {
         match self.get(provider) {
             Some(p) if p.enabled() => p.fetch_details(url).await,
             Some(_) => Err(ProviderError::Disabled),
-            None => Err(ProviderError::NotFound(format!("Provider '{provider}' not found"))),
+            None => Err(ProviderError::NotFound(format!(
+                "Provider '{provider}' not found"
+            ))),
         }
     }
 }
