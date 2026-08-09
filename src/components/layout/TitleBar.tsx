@@ -1,16 +1,20 @@
 'use client';
 
-import React, { useRef, useEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { open as openUrl } from '@tauri-apps/plugin-shell';
 import { Magnifer, Bolt, CupHot } from '@solar-icons/react';
-import { isTauri } from '@/lib/tauri';
+import { getAppVersion, isTauri } from '@/lib/tauri';
+import { useTaskStore } from '@/stores/task-store';
 
 const GITHUB_URL = 'https://github.com/Riteshp2001/Fucking-Fast-Downloader';
 const COFFEE_URL = 'https://buymeacoffee.com/riteshp2001/e/367661';
 
 export default function TitleBar() {
   const inputRef = useRef<HTMLInputElement>(null);
+  const [appVersion, setAppVersion] = useState('…');
+  const searchQuery = useTaskStore((state) => state.searchQuery);
+  const setSearchQuery = useTaskStore((state) => state.setSearchQuery);
 
   const minimize = () => isTauri() && getCurrentWindow().minimize();
   const toggleMaximize = () => isTauri() && getCurrentWindow().toggleMaximize();
@@ -29,34 +33,53 @@ export default function TitleBar() {
   };
 
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
-        e.preventDefault();
+    let cancelled = false;
+    getAppVersion()
+      .then((version) => {
+        if (!cancelled) setAppVersion(version);
+      })
+      .catch((error) => {
+        console.error('Failed to read application version:', error);
+        if (!cancelled) setAppVersion('unknown');
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
         inputRef.current?.focus();
+        inputRef.current?.select();
+      }
+
+      if (event.key === 'Escape' && document.activeElement === inputRef.current) {
+        setSearchQuery('');
+        inputRef.current?.blur();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [setSearchQuery]);
 
   return (
     <div
       data-tauri-drag-region
       className="h-11 bg-[var(--md-sys-color-surface-container)] border-b border-[var(--md-sys-color-outline-variant)] flex items-center justify-between px-4 select-none z-50 relative"
     >
-      {/* Brand Identity & Quick Links */}
       <div className="flex items-center gap-2.5">
         <div className="flex items-center gap-2 pointer-events-none">
           <div className="w-6 h-6 rounded-md bg-[var(--md-sys-color-primary-container)] text-[var(--md-sys-color-on-primary-container)] flex items-center justify-center font-bold">
             <Bolt size={14} className="fill-current" />
           </div>
           <span className="text-xs font-semibold text-[var(--md-sys-color-on-surface)] tracking-wide">FF Downloader</span>
-          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-[var(--md-sys-color-surface-container-high)] text-[var(--md-sys-color-on-surface-variant)] font-semibold border border-[var(--md-sys-color-outline-variant)]">v0.1</span>
+          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-[var(--md-sys-color-surface-container-high)] text-[var(--md-sys-color-on-surface-variant)] font-semibold border border-[var(--md-sys-color-outline-variant)]">v{appVersion}</span>
         </div>
 
-        {/* GitHub & Buy Me a Coffee Links */}
         <div className="flex items-center gap-1.5 ml-2" data-tauri-drag-region={false}>
-          {/* GitHub Link */}
           <button
             type="button"
             onClick={() => openExternal(GITHUB_URL)}
@@ -69,7 +92,6 @@ export default function TitleBar() {
             <span>GitHub</span>
           </button>
 
-          {/* Buy Me a Coffee Link */}
           <button
             type="button"
             onClick={() => openExternal(COFFEE_URL)}
@@ -82,14 +104,16 @@ export default function TitleBar() {
         </div>
       </div>
 
-      {/* Global Search Bar - Material 3 Expressive Search Bar */}
       <div className="flex-1 flex justify-center max-w-md mx-4" data-tauri-drag-region={false}>
         <div className="relative w-full max-w-xs group flex items-center">
           <Magnifer size={14} className="absolute left-3 text-[var(--md-sys-color-on-surface-variant)] group-focus-within:text-[var(--md-sys-color-primary)] transition-colors duration-150 pointer-events-none" />
           <input
             ref={inputRef}
-            type="text"
+            type="search"
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
             placeholder="Search downloads..."
+            aria-label="Search downloads"
             className="w-full bg-[var(--md-sys-color-surface-container-high)] border border-[var(--md-sys-color-outline-variant)] rounded-xl py-1.5 pl-9 pr-14 text-xs text-[var(--md-sys-color-on-surface)] placeholder:text-[var(--md-sys-color-on-surface-variant)] focus:outline-none focus:border-[var(--md-sys-color-primary)] focus:ring-1 focus:ring-[var(--md-sys-color-primary)]/20 transition-all duration-150"
           />
           <kbd className="absolute right-2.5 text-[10px] font-mono font-medium text-[var(--md-sys-color-on-surface-variant)] bg-[var(--md-sys-color-surface-container-lowest)] px-1.5 py-0.5 rounded-md border border-[var(--md-sys-color-outline-variant)] pointer-events-none select-none">
@@ -98,7 +122,6 @@ export default function TitleBar() {
         </div>
       </div>
 
-      {/* Window Controls */}
       <div className="flex items-center gap-1" data-tauri-drag-region={false}>
         <button
           onClick={minimize}

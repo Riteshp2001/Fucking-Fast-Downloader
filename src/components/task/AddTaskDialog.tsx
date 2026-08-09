@@ -1,11 +1,21 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
-import { addUri, resolveFuckingFastLink } from '@/lib/tauri';
+import React, { useEffect, useRef, useState } from 'react';
+import {
+  addTorrent,
+  addUri,
+  readClipboardText,
+  resolveFuckingFastLink,
+} from '@/lib/tauri';
 import { formatError } from '@/lib/errors';
 import {
-  CloseCircle, AltArrowDown, AltArrowRight, AddSquare,
-  TrashBinMinimalistic, ClipboardText, CheckCircle
+  CloseCircle,
+  AltArrowDown,
+  AltArrowRight,
+  AddSquare,
+  TrashBinMinimalistic,
+  ClipboardText,
+  CheckCircle,
 } from '@solar-icons/react';
 
 interface AddTaskDialogProps {
@@ -19,6 +29,14 @@ interface ParsedUrl {
   isValid: boolean;
   host: string;
 }
+
+interface AddFailure {
+  url: string;
+  message: string;
+}
+
+const MAX_TORRENT_FILE_SIZE = 32 * 1024 * 1024;
+const TORRENT_PRIORITY = 'head=64M,tail=32M';
 
 function isMagnetUrl(url: string): boolean {
   return url.trim().toLowerCase().startsWith('magnet:?');
@@ -45,7 +63,8 @@ function parseUrlHost(url: string): { isValid: boolean; host: string } {
 
   try {
     const parsed = new URL(normalized);
-    return { isValid: true, host: parsed.hostname };
+    const isSupported = parsed.protocol === 'http:' || parsed.protocol === 'https:' || parsed.protocol === 'ftp:';
+    return { isValid: isSupported, host: isSupported ? parsed.hostname : '' };
   } catch {
     return { isValid: false, host: '' };
   }
@@ -56,20 +75,17 @@ function getHostBadge(host: string) {
   if (h === 'magnet') {
     return <span className="text-[9px] font-mono px-1.5 py-0.5 rounded-full bg-purple-500/15 text-purple-400 font-bold border border-purple-500/30 shrink-0">Magnet</span>;
   }
-  if (h.includes('magnet') || h.includes('torrent')) {
-    return <span className="text-[9px] font-mono px-1.5 py-0.5 rounded-full bg-purple-500/15 text-purple-400 font-bold border border-purple-500/30 shrink-0">🧲 Magnet</span>;
-  }
   if (h.includes('datanodes')) {
-    return <span className="text-[9px] font-mono px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-400 font-bold border border-amber-500/30 shrink-0">📦 DataNodes</span>;
+    return <span className="text-[9px] font-mono px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-400 font-bold border border-amber-500/30 shrink-0">DataNodes</span>;
   }
-  return <span className="text-[9px] font-mono px-1.5 py-0.5 rounded-full bg-neutral-500/15 text-neutral-400 font-bold border border-neutral-500/30 shrink-0">🌐 {host.length > 20 ? host.slice(0, 20) + '…' : host}</span>;
+  return <span className="text-[9px] font-mono px-1.5 py-0.5 rounded-full bg-neutral-500/15 text-neutral-400 font-bold border border-neutral-500/30 shrink-0">{host.length > 20 ? host.slice(0, 20) + '…' : host}</span>;
 }
 
 function normalizeInputLines(text: string): string[] {
   const rawLines = text
     .split(/[\n\r]+/)
-    .map(l => l.trim())
-    .filter(l => l.length > 0 && !l.startsWith('#'));
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0 && !line.startsWith('#'));
 
   const lines: string[] = [];
   for (const line of rawLines) {
@@ -88,9 +104,7 @@ function normalizeInputLines(text: string): string[] {
 }
 
 function parseUrlsFromText(text: string): ParsedUrl[] {
-  const lines = normalizeInputLines(text);
-
-  return lines.map(line => {
+  return normalizeInputLines(text).map((line) => {
     const { isValid, host } = parseUrlHost(line);
     return { url: line, isValid, host };
   });
@@ -106,10 +120,61 @@ function isFuckingFastShareUrl(url: string): boolean {
   }
 }
 
+function getFuckingFastFilename(url: string): string | null {
+  try {
+    const parsed = new URL(url);
+    if (!parsed.hash || parsed.hash.length <= 1) return null;
+    const raw = parsed.hash.slice(1);
+    try {
+      return decodeURIComponent(raw) || null;
+    } catch {
+      return raw || null;
+    }
+  } catch {
+    return null;
+  }
+}
+
+function isRemoteTorrentUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return (parsed.protocol === 'http:' || parsed.protocol === 'https:')
+      && parsed.pathname.toLowerCase().endsWith('.torrent');
+  } catch {
+    return false;
+  }
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  const chunkSize = 0x8000;
+  let binary = '';
+
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    const chunk = bytes.subarray(offset, Math.min(offset + chunkSize, bytes.length));
+    binary += String.fromCharCode(...chunk);
+  }
+
+  return btoa(binary);
+}
+
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  return bytesToBase64(new Uint8Array(buffer));
+}
+
+function torrentUriOptions(): Record<string, unknown> {
+  return {
+    'file-allocation': 'none',
+    'bt-prioritize-piece': TORRENT_PRIORITY,
+    'bt-remove-unselected-file': 'false',
+    'bt-save-metadata': 'true',
+  };
+}
+
 export default function AddTaskDialog({ isOpen, onClose, initialUrls = [] }: AddTaskDialogProps) {
+  const torrentInputRef = useRef<HTMLInputElement>(null);
   const [urlsText, setUrlsText] = useState('');
   const [outName, setOutName] = useState('');
-  const [connections, setConnections] = useState(16);
+  const [connections, setConnections] = useState<number | ''>('');
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
@@ -126,8 +191,10 @@ export default function AddTaskDialog({ isOpen, onClose, initialUrls = [] }: Add
   if (!isOpen) return null;
 
   const parsedUrls = parseUrlsFromText(urlsText);
-  const validCount = parsedUrls.filter(p => p.isValid).length;
-  const invalidCount = parsedUrls.filter(p => !p.isValid).length;
+  const validUrls = parsedUrls.filter((item) => item.isValid);
+  const validCount = validUrls.length;
+  const invalidCount = parsedUrls.length - validCount;
+  const canUseCustomFilename = validCount <= 1;
 
   const handleRemoveUrl = (index: number) => {
     const lines = normalizeInputLines(urlsText);
@@ -137,61 +204,129 @@ export default function AddTaskDialog({ isOpen, onClose, initialUrls = [] }: Add
 
   const handlePaste = async () => {
     try {
-      const text = await navigator.clipboard.readText();
-      if (text) {
-        // Smart merge: if there's already text, append on new lines
-        setUrlsText(prev => {
-          const trimmed = prev.trim();
-          if (trimmed) return trimmed + '\n' + text.trim();
-          return text.trim();
-        });
-      }
-    } catch {
-      // Clipboard unavailable in Tauri — handled by platform paste
+      const text = await readClipboardText();
+      if (!text.trim()) return;
+
+      setUrlsText((previous) => {
+        const trimmed = previous.trim();
+        return trimmed ? `${trimmed}\n${text.trim()}` : text.trim();
+      });
+      setErrorMsg('');
+    } catch (error) {
+      setErrorMsg(`Could not read the clipboard: ${formatError(error)}`);
     }
   };
 
-  const handleAdd = async () => {
-    const urls = parsedUrls.filter(p => p.isValid).map(p => p.url);
-    if (urls.length === 0) { setErrorMsg('Please enter at least one valid download URL.'); return; }
+  const handleTorrentFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+
+    if (!file.name.toLowerCase().endsWith('.torrent')) {
+      setErrorMsg('Please select a .torrent file.');
+      return;
+    }
+    if (file.size > MAX_TORRENT_FILE_SIZE) {
+      setErrorMsg('The selected .torrent file is unusually large and was not imported.');
+      return;
+    }
 
     setIsSubmitting(true);
     setErrorMsg('');
-
     try {
-      for (const url of urls) {
-        const downloadUrl = isFuckingFastShareUrl(url)
-          ? await resolveFuckingFastLink(url)
-          : url;
-        const options: Record<string, unknown> = {};
-        if (!isMagnetUrl(downloadUrl)) {
-          if (outName.trim()) options['out'] = outName.trim();
-          if (connections) options['max-connection-per-server'] = String(connections);
-        }
-        await addUri(downloadUrl, options);
-      }
+      const torrentBase64 = arrayBufferToBase64(await file.arrayBuffer());
+      await addTorrent(torrentBase64);
       setUrlsText('');
       setOutName('');
       onClose();
-    } catch (err: unknown) {
-      console.error('Failed to add tasks:', err);
-      setErrorMsg(formatError(err));
+    } catch (error) {
+      console.error('Failed to import torrent:', error);
+      setErrorMsg(`Could not import ${file.name}: ${formatError(error)}`);
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  const handleAdd = async () => {
+    if (validUrls.length === 0) {
+      setErrorMsg('Please enter at least one valid HTTP(S), FTP, or magnet URL.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    setErrorMsg('');
+
+    const failures: AddFailure[] = parsedUrls
+      .filter((item) => !item.isValid)
+      .map((item) => ({ url: item.url, message: 'Unsupported or invalid URL' }));
+    let addedCount = 0;
+
+    for (const item of validUrls) {
+      try {
+        const fromFuckingFast = isFuckingFastShareUrl(item.url);
+        const downloadUrl = fromFuckingFast
+          ? await resolveFuckingFastLink(item.url)
+          : item.url;
+
+        // Let aria2 fetch remote torrent metainfo itself and follow it in memory.
+        // This avoids treating the .torrent file as the final payload and also
+        // avoids an unnecessary frontend/backend metadata download round-trip.
+        if (isRemoteTorrentUrl(downloadUrl)) {
+          await addUri(downloadUrl, {
+            ...torrentUriOptions(),
+            'follow-torrent': 'mem',
+          });
+          addedCount += 1;
+          continue;
+        }
+
+        const options: Record<string, unknown> = isMagnetUrl(downloadUrl)
+          ? torrentUriOptions()
+          : {};
+
+        if (!isMagnetUrl(downloadUrl)) {
+          if (canUseCustomFilename && outName.trim()) {
+            options.out = outName.trim();
+          } else if (fromFuckingFast) {
+            const filename = getFuckingFastFilename(item.url);
+            if (filename) options.out = filename;
+          }
+          if (connections !== '') options['max-connection-per-server'] = String(connections);
+        }
+
+        await addUri(downloadUrl, options);
+        addedCount += 1;
+      } catch (error) {
+        console.error('Failed to add download:', item.url, error);
+        failures.push({ url: item.url, message: formatError(error) });
+      }
+    }
+
+    setIsSubmitting(false);
+
+    if (failures.length === 0) {
+      setUrlsText('');
+      setOutName('');
+      onClose();
+      return;
+    }
+
+    setUrlsText(failures.map((failure) => failure.url).join('\n'));
+    const firstFailure = failures[0];
+    const summary = addedCount > 0
+      ? `Added ${addedCount} download${addedCount === 1 ? '' : 's'}. ${failures.length} item${failures.length === 1 ? '' : 's'} still need attention.`
+      : `No downloads were added. ${failures.length} item${failures.length === 1 ? '' : 's'} failed.`;
+    setErrorMsg(`${summary} ${firstFailure.message}`);
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      {/* Glass Backdrop */}
       <div
         className="absolute inset-0 bg-neutral-950/70 backdrop-blur-md transition-opacity animate-[fade-in_150ms_ease-out]"
         onClick={onClose}
       />
 
-      {/* Dialog Card */}
       <div className="bg-[var(--md-sys-color-surface-container)] border border-[var(--md-sys-color-outline-variant)]/60 rounded-3xl w-full max-w-lg shadow-2xl relative z-10 overflow-hidden flex flex-col max-h-[85vh] animate-[scale-in_200ms_ease-out]">
-        {/* Header */}
         <div className="px-6 py-4 border-b border-[var(--md-sys-color-outline-variant)]/60 flex items-center justify-between bg-[var(--md-sys-color-surface-container-high)]/40">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-xl bg-teal-500/15 text-teal-400 flex items-center justify-center border border-teal-500/20">
@@ -201,59 +336,71 @@ export default function AddTaskDialog({ isOpen, onClose, initialUrls = [] }: Add
           </div>
           <button
             onClick={onClose}
-            className="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--md-sys-color-on-surface-variant)] hover:text-[var(--md-sys-color-on-surface)] hover:bg-[var(--md-sys-color-surface-container-highest)] transition-colors cursor-pointer"
+            disabled={isSubmitting}
+            className="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--md-sys-color-on-surface-variant)] hover:text-[var(--md-sys-color-on-surface)] hover:bg-[var(--md-sys-color-surface-container-highest)] transition-colors cursor-pointer disabled:opacity-50"
           >
             <CloseCircle size={18} />
           </button>
         </div>
 
-        {/* Content */}
         <div className="p-6 overflow-y-auto space-y-4 flex-1">
           {errorMsg && (
-            <div className="p-3 bg-red-500/15 border border-red-500/30 text-red-400 text-xs rounded-xl flex items-center gap-2 font-medium">
-              <CloseCircle size={16} className="shrink-0" />
-              {errorMsg}
+            <div className="p-3 bg-red-500/15 border border-red-500/30 text-red-400 text-xs rounded-xl flex items-start gap-2 font-medium">
+              <CloseCircle size={16} className="shrink-0 mt-0.5" />
+              <span>{errorMsg}</span>
             </div>
           )}
 
-          {/* URL Input Area */}
           <div>
-            <div className="flex items-center justify-between mb-1.5">
+            <div className="flex items-center justify-between mb-1.5 gap-2">
               <label className="text-xs font-semibold text-[var(--md-sys-color-on-surface)]">
                 Download URLs <span className="text-[var(--md-sys-color-on-surface-variant)] font-normal">(one URL per line)</span>
               </label>
-              <button
-                type="button"
-                onClick={handlePaste}
-                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold text-teal-400 hover:text-teal-300 hover:bg-teal-500/10 transition-colors cursor-pointer"
-              >
-                <ClipboardText size={11} />
-                Paste
-              </button>
+              <div className="flex items-center gap-1">
+                <input
+                  ref={torrentInputRef}
+                  type="file"
+                  accept=".torrent,application/x-bittorrent"
+                  className="hidden"
+                  onChange={handleTorrentFile}
+                />
+                <button
+                  type="button"
+                  onClick={() => torrentInputRef.current?.click()}
+                  disabled={isSubmitting}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold text-[var(--md-sys-color-on-surface-variant)] hover:text-teal-300 hover:bg-teal-500/10 transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  <AddSquare size={11} />
+                  .torrent
+                </button>
+                <button
+                  type="button"
+                  onClick={handlePaste}
+                  disabled={isSubmitting}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold text-teal-400 hover:text-teal-300 hover:bg-teal-500/10 transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  <ClipboardText size={11} />
+                  Paste
+                </button>
+              </div>
             </div>
             <textarea
               value={urlsText}
               onChange={(e) => setUrlsText(e.target.value)}
-              className="w-full bg-[var(--md-sys-color-surface-container-high)] border border-[var(--md-sys-color-outline-variant)]/60 rounded-xl p-3 text-xs font-mono text-[var(--md-sys-color-on-surface)] focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500/30 transition-all resize-none min-h-[90px] placeholder:text-[var(--md-sys-color-on-surface-variant)]/60"
-              placeholder={"https://example.com/file.zip\nmagnet:?xt=urn:btih:...\nhttps://example.com/file.torrent"}
+              disabled={isSubmitting}
+              className="w-full bg-[var(--md-sys-color-surface-container-high)] border border-[var(--md-sys-color-outline-variant)]/60 rounded-xl p-3 text-xs font-mono text-[var(--md-sys-color-on-surface)] focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500/30 transition-all resize-none min-h-[90px] placeholder:text-[var(--md-sys-color-on-surface-variant)]/60 disabled:opacity-60"
+              placeholder={"https://example.com/file.zip\nhttps://example.com/file.torrent\nmagnet:?xt=urn:btih:..."}
             />
           </div>
 
-          {/* Parsed URL List */}
           {parsedUrls.length > 0 && (
             <div>
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--md-sys-color-on-surface-variant)]">
-                    Parsed URLs
-                  </span>
-                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-full bg-teal-500/15 text-teal-400 border border-teal-500/30">
-                    {validCount} valid
-                  </span>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--md-sys-color-on-surface-variant)]">Parsed URLs</span>
+                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-full bg-teal-500/15 text-teal-400 border border-teal-500/30">{validCount} valid</span>
                   {invalidCount > 0 && (
-                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-full bg-red-500/15 text-red-400 border border-red-500/30">
-                      {invalidCount} invalid
-                    </span>
+                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-full bg-red-500/15 text-red-400 border border-red-500/30">{invalidCount} invalid</span>
                   )}
                 </div>
               </div>
@@ -261,37 +408,27 @@ export default function AddTaskDialog({ isOpen, onClose, initialUrls = [] }: Add
               <div className="space-y-1.5 max-h-[180px] overflow-y-auto pr-1">
                 {parsedUrls.map((item, idx) => (
                   <div
-                    key={idx}
+                    key={`${item.url}-${idx}`}
                     className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-xs transition-all ${
                       item.isValid
                         ? 'bg-[var(--md-sys-color-surface-container)] border-[var(--md-sys-color-outline-variant)] hover:bg-[var(--md-sys-color-surface-container-high)]'
                         : 'bg-red-500/5 border-red-500/20'
                     }`}
                   >
-                    {/* Status Icon */}
-                    <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 ${
-                      item.isValid ? 'text-teal-400' : 'text-red-400'
-                    }`}>
+                    <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 ${item.isValid ? 'text-teal-400' : 'text-red-400'}`}>
                       {item.isValid ? <CheckCircle size={14} /> : <CloseCircle size={14} />}
                     </div>
-
-                    {/* URL text */}
                     <span
-                      className={`flex-1 font-mono truncate min-w-0 ${
-                        item.isValid ? 'text-[var(--md-sys-color-on-surface)]' : 'text-red-400'
-                      }`}
+                      className={`flex-1 font-mono truncate min-w-0 ${item.isValid ? 'text-[var(--md-sys-color-on-surface)]' : 'text-red-400'}`}
                       title={item.url}
                     >
                       {item.url}
                     </span>
-
-                    {/* Host Badge */}
                     {item.isValid && getHostBadge(item.host)}
-
-                    {/* Remove button */}
                     <button
                       onClick={() => handleRemoveUrl(idx)}
-                      className="w-5 h-5 rounded-full flex items-center justify-center text-[var(--md-sys-color-on-surface-variant)] hover:text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer shrink-0"
+                      disabled={isSubmitting}
+                      className="w-5 h-5 rounded-full flex items-center justify-center text-[var(--md-sys-color-on-surface-variant)] hover:text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer shrink-0 disabled:opacity-50"
                       title="Remove URL"
                     >
                       <TrashBinMinimalistic size={12} />
@@ -318,35 +455,47 @@ export default function AddTaskDialog({ isOpen, onClose, initialUrls = [] }: Add
                   type="text"
                   value={outName}
                   onChange={(e) => setOutName(e.target.value)}
-                  placeholder="game_installer.part1.rar"
-                  className="w-full bg-[var(--md-sys-color-surface-container-high)] border border-[var(--md-sys-color-outline-variant)]/60 rounded-xl px-3 py-2 text-xs text-[var(--md-sys-color-on-surface)] focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500/30 transition-all"
+                  disabled={!canUseCustomFilename || isSubmitting}
+                  placeholder={canUseCustomFilename ? 'download.bin' : 'Available for a single URL only'}
+                  className="w-full bg-[var(--md-sys-color-surface-container-high)] border border-[var(--md-sys-color-outline-variant)]/60 rounded-xl px-3 py-2 text-xs text-[var(--md-sys-color-on-surface)] focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500/30 transition-all disabled:opacity-50"
                 />
+                {!canUseCustomFilename && (
+                  <p className="text-[10px] mt-1 text-[var(--md-sys-color-on-surface-variant)]">A shared custom filename is disabled for batch downloads to prevent file collisions.</p>
+                )}
               </div>
               <div>
                 <label className="block text-xs font-semibold text-[var(--md-sys-color-on-surface-variant)] mb-1">Max Connections Per Server</label>
                 <input
                   type="number"
                   value={connections}
-                  onChange={(e) => setConnections(parseInt(e.target.value, 10) || 16)}
-                  min={1} max={32}
-                  className="w-full bg-[var(--md-sys-color-surface-container-high)] border border-[var(--md-sys-color-outline-variant)]/60 rounded-xl px-3 py-2 text-xs text-[var(--md-sys-color-on-surface)] focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500/30 transition-all"
+                  onChange={(e) => {
+                    if (!e.target.value) {
+                      setConnections('');
+                      return;
+                    }
+                    setConnections(Math.min(32, Math.max(1, parseInt(e.target.value, 10) || 1)));
+                  }}
+                  min={1}
+                  max={32}
+                  placeholder="Use global setting"
+                  disabled={isSubmitting}
+                  className="w-full bg-[var(--md-sys-color-surface-container-high)] border border-[var(--md-sys-color-outline-variant)]/60 rounded-xl px-3 py-2 text-xs text-[var(--md-sys-color-on-surface)] focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500/30 transition-all disabled:opacity-50"
                 />
+                <p className="text-[10px] mt-1 text-[var(--md-sys-color-on-surface-variant)]">Leave blank to use the global engine preference.</p>
               </div>
             </div>
           )}
         </div>
 
-        {/* Footer */}
         <div className="px-6 py-4 border-t border-[var(--md-sys-color-outline-variant)]/60 flex items-center justify-between bg-[var(--md-sys-color-surface-container-high)]/40">
           <span className="text-[11px] text-[var(--md-sys-color-on-surface-variant)] font-mono">
-            {parsedUrls.length > 0
-              ? `${validCount} URL${validCount !== 1 ? 's' : ''} ready`
-              : 'No URLs entered'}
+            {parsedUrls.length > 0 ? `${validCount} URL${validCount !== 1 ? 's' : ''} ready` : 'No URLs entered'}
           </span>
           <div className="flex gap-2.5">
             <button
               onClick={onClose}
-              className="px-4 py-2 text-xs font-semibold rounded-xl border border-[var(--md-sys-color-outline-variant)] text-[var(--md-sys-color-on-surface-variant)] hover:bg-[var(--md-sys-color-surface-container-high)] hover:text-[var(--md-sys-color-on-surface)] transition-all cursor-pointer"
+              disabled={isSubmitting}
+              className="px-4 py-2 text-xs font-semibold rounded-xl border border-[var(--md-sys-color-outline-variant)] text-[var(--md-sys-color-on-surface-variant)] hover:bg-[var(--md-sys-color-surface-container-high)] hover:text-[var(--md-sys-color-on-surface)] transition-all cursor-pointer disabled:opacity-50"
             >
               Cancel
             </button>

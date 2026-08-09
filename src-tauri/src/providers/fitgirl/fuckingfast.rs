@@ -2,6 +2,7 @@ use crate::providers::error::ProviderError;
 use regex::Regex;
 use reqwest::{header, Client};
 use std::time::Duration;
+use tauri::Manager;
 
 const BASE_URL: &str = "https://fuckingfast.co";
 const MAX_RETRIES: u32 = 3;
@@ -43,44 +44,52 @@ impl FuckingFastResolver {
             .ok_or_else(|| ProviderError::Parse(format!("Invalid FuckingFast link: {link}")))?;
         let clean_url = format!("{BASE_URL}/{file_id}");
         let post_url = format!("{BASE_URL}/f/{file_id}/go");
-        let mut last_error: Option<ProviderError>;
+        let mut errors = Vec::new();
 
-        // Try direct HTTP fetch first (fast path for pages without Cloudflare challenge)
-        if let Ok(Some(url)) = self.fetch_page_direct_url(&clean_url).await {
-            return Ok(url);
+        // Match the rendered-page path first. FuckingFast often opens a signed
+        // URL on a CDN whose hostname is unrelated to fuckingfast.co.
+        match self.fetch_page_direct_url(&clean_url).await {
+            Ok(Some(url)) => return Ok(url),
+            Ok(None) => {}
+            Err(error) => errors.push(error),
         }
 
-        // Try POST /go endpoint (htmx fallback)
+        // Newer layouts can expose an HTMX POST endpoint instead.
         match self.post_go(&post_url, &clean_url).await {
             Ok(url) => return Ok(url),
-            Err(e) => last_error = Some(e),
+            Err(error) => errors.push(error),
         }
 
-        // Retry with backoff
         for attempt in 0..MAX_RETRIES {
             if attempt > 0 {
                 tokio::time::sleep(Duration::from_secs(2 * attempt as u64)).await;
             }
 
-            if let Ok(Some(url)) = self.fetch_page_direct_url(&clean_url).await {
-                return Ok(url);
+            match self.fetch_page_direct_url(&clean_url).await {
+                Ok(Some(url)) => return Ok(url),
+                Ok(None) => {}
+                Err(error) => errors.push(error),
             }
 
             match self.post_go(&post_url, &clean_url).await {
                 Ok(url) => return Ok(url),
-                Err(e) => last_error = Some(e),
+                Err(error) => errors.push(error),
             }
         }
 
-        // Fallback: Use WebView to handle Cloudflare challenge
+        // Last resort: let the system WebView solve browser challenges. The
+        // window.open override turns popup navigation into same-window navigation
+        // so on_page_load can capture any signed HTTP(S) CDN destination.
         if let Some(app_handle) = &self.app_handle {
             match self.resolve_via_webview(app_handle, &clean_url).await {
                 Ok(url) => return Ok(url),
-                Err(e) => last_error = Some(e),
+                Err(error) => errors.push(error),
             }
         }
 
-        Err(last_error.unwrap_or(ProviderError::Network("FuckingFast resolve failed".into())))
+        Err(errors
+            .pop()
+            .unwrap_or(ProviderError::Network("FuckingFast resolve failed".into())))
     }
 
     async fn fetch_page_direct_url(
@@ -90,7 +99,10 @@ impl FuckingFastResolver {
         let resp = self
             .client
             .get(clean_url)
-            .header(header::ACCEPT, "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8")
+            .header(
+                header::ACCEPT,
+                "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+            )
             .header(header::ACCEPT_LANGUAGE, "en-US,en;q=0.9")
             .header(header::CACHE_CONTROL, "no-cache")
             .header(header::PRAGMA, "no-cache")
@@ -106,7 +118,7 @@ impl FuckingFastResolver {
         let reason = status.canonical_reason().unwrap_or("Unknown").to_string();
         let body = resp.text().await.map_err(ProviderError::from)?;
 
-        if let Some(url) = extract_direct_download_url(&body) {
+        if let Some(url) = extract_download_candidate(&body) {
             return Ok(Some(url));
         }
 
@@ -120,7 +132,9 @@ impl FuckingFastResolver {
         if is_cloudflare_challenge(&body) {
             return Err(ProviderError::Http(
                 status.as_u16(),
-                format!("Cloudflare protection detected on {clean_url}. The download link may require manual browser interaction."),
+                format!(
+                    "Cloudflare protection detected on {clean_url}. Browser resolution is required."
+                ),
             ));
         }
 
@@ -155,18 +169,18 @@ impl FuckingFastResolver {
             .or_else(|| resp.headers().get("hx-location"))
             .or_else(|| resp.headers().get(header::LOCATION))
             .and_then(|value| value.to_str().ok())
-            .and_then(|value| normalize_redirect_url(clean_url, value).ok());
+            .and_then(|value| normalize_redirect_url(clean_url, value).ok())
+            .and_then(|value| validate_http_download_url(&value).ok());
 
         if let Some(url) = header_redirect {
             return Ok(url);
         }
 
         let body = resp.text().await.map_err(ProviderError::from)?;
-        if let Some(url) = extract_direct_download_url(&body) {
+        if let Some(url) = extract_download_candidate(&body) {
             return Ok(url);
         }
 
-        // If we got a rate limit or forbidden, provide a more helpful error
         if status == 403 || status == 429 {
             let lower = body.to_ascii_lowercase();
             if lower.contains("cloudflare")
@@ -175,14 +189,19 @@ impl FuckingFastResolver {
             {
                 return Err(ProviderError::Http(
                     status.as_u16(),
-                    format!("Cloudflare protection detected on {post_url}. The download link may require manual browser interaction.",)
+                    format!(
+                        "Cloudflare protection detected on {post_url}. Browser resolution is required."
+                    ),
                 ));
             }
         }
 
         Err(ProviderError::Http(
             status.as_u16(),
-            format!("Missing HX-Redirect or Location header from {post_url}. Status: {status}. Body preview: {}", &body[..body.len().min(200)]),
+            format!(
+                "FuckingFast did not expose a download target from {post_url}. Status: {status}. Body preview: {}",
+                &body[..body.len().min(200)]
+            ),
         ))
     }
 
@@ -199,10 +218,16 @@ impl FuckingFastResolver {
         let result_clone = result.clone();
         let url = clean_url.to_string();
 
+        if let Some(existing) = app_handle.get_webview_window("ff-resolver") {
+            let _ = existing.close();
+        }
+
         let window = WebviewWindowBuilder::new(
             app_handle,
             "ff-resolver",
-            tauri::WebviewUrl::External(url.parse().unwrap()),
+            tauri::WebviewUrl::External(url.parse().map_err(|error| {
+                ProviderError::Parse(format!("Invalid FuckingFast URL: {error}"))
+            })?),
         )
         .title("Resolving FuckingFast link...")
         .inner_size(900.0, 700.0)
@@ -210,43 +235,57 @@ impl FuckingFastResolver {
         .visible(true)
         .decorations(true)
         .on_page_load(move |window, event| {
-            if let tauri::webview::PageLoadEvent::Finished = event.event() {
-                if let Ok(url) = window.url() {
-                    let url_str = url.as_str().to_string();
+            if !matches!(event.event(), tauri::webview::PageLoadEvent::Finished) {
+                return;
+            }
 
-                    if url_str.starts_with("https://dl.fuckingfast.co/")
-                        || url_str.starts_with("https://fuckingfast.co/dl/")
-                    {
-                        if let Ok(mut guard) = result_clone.lock() {
-                            *guard = Some(Ok(url_str));
-                        }
-                        let _ = window.close();
-                        return;
-                    }
+            let Ok(current_url) = window.url() else {
+                return;
+            };
+            let current = current_url.as_str().to_string();
 
-                    // On the share page, click the HTMX download button
-                    // after Cloudflare auto-solves (1s delay for DOM ready).
-                    if url_str.contains("fuckingfast.co/") {
-                        let _ = window.eval(
-                            r#"
-                            if (!window.__ffClicked) {
-                                window.__ffClicked = true;
-                                setTimeout(function() {
-                                    var btn = document.querySelector('[hx-post]')
-                                        || document.querySelector('#download-btn')
-                                        || document.querySelector('button[type="submit"]')
-                                        || document.querySelector('.btn.download');
-                                    if (btn) btn.click();
-                                }, 1500);
-                            }
-                        "#,
-                        );
-                    }
+            if is_resolved_navigation_url(&current) {
+                if let Ok(mut guard) = result_clone.lock() {
+                    *guard = Some(Ok(current));
                 }
+                let _ = window.close();
+                return;
+            }
+
+            if is_fuckingfast_page_url(&current) {
+                let _ = window.eval(
+                    r#"
+                    (function () {
+                      if (window.__ffResolverInstalled) return;
+                      window.__ffResolverInstalled = true;
+
+                      var originalOpen = window.open;
+                      window.open = function (target) {
+                        if (typeof target === 'string' && /^https?:\/\//i.test(target)) {
+                          window.location.assign(target);
+                          return null;
+                        }
+                        if (originalOpen) return originalOpen.apply(window, arguments);
+                        return null;
+                      };
+
+                      setTimeout(function () {
+                        var button = document.querySelector('[hx-post]')
+                          || document.querySelector('#download-btn')
+                          || document.querySelector('button[type="submit"]')
+                          || document.querySelector('.btn.download')
+                          || Array.from(document.querySelectorAll('button,a')).find(function (el) {
+                               return /download/i.test((el.textContent || '').trim());
+                             });
+                        if (button && typeof button.click === 'function') button.click();
+                      }, 1200);
+                    })();
+                    "#,
+                );
             }
         })
         .build()
-        .map_err(|e| ProviderError::Network(format!("Failed to create WebView: {e}")))?;
+        .map_err(|error| ProviderError::Network(format!("Failed to create WebView: {error}")))?;
 
         let start = Instant::now();
         loop {
@@ -254,7 +293,7 @@ impl FuckingFastResolver {
                 let _ = window.close();
                 return Err(ProviderError::Http(
                     408,
-                    "WebView resolution timed out".into(),
+                    "FuckingFast browser resolution timed out".into(),
                 ));
             }
 
@@ -267,6 +306,29 @@ impl FuckingFastResolver {
             tokio::time::sleep(Duration::from_millis(500)).await;
         }
     }
+}
+
+fn is_fuckingfast_page_url(link: &str) -> bool {
+    let Ok(url) = url::Url::parse(link) else {
+        return false;
+    };
+    let Some(host) = url.host_str().map(str::to_ascii_lowercase) else {
+        return false;
+    };
+    host == "fuckingfast.co" || host.ends_with(".fuckingfast.co")
+}
+
+fn is_resolved_navigation_url(link: &str) -> bool {
+    let Ok(url) = url::Url::parse(link) else {
+        return false;
+    };
+    if !matches!(url.scheme(), "http" | "https") {
+        return false;
+    }
+    if is_direct_download_url(link) {
+        return true;
+    }
+    !is_fuckingfast_page_url(link)
 }
 
 fn is_direct_download_url(link: &str) -> bool {
@@ -331,11 +393,56 @@ pub(crate) fn normalize_redirect_url(base: &str, redirect: &str) -> Result<Strin
         .map_err(|error| ProviderError::Parse(format!("Invalid redirect URL: {error}")))
 }
 
+fn validate_http_download_url(candidate: &str) -> Result<String, ProviderError> {
+    let parsed = url::Url::parse(candidate)
+        .map_err(|error| ProviderError::Parse(format!("Invalid download URL: {error}")))?;
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return Err(ProviderError::Parse(format!(
+            "Unsupported download URL scheme: {}",
+            parsed.scheme()
+        )));
+    }
+    Ok(parsed.to_string())
+}
+
+/// Normalize escaping commonly found when a JavaScript snippet is embedded in
+/// JSON, HTML attributes, or another JavaScript string. This intentionally
+/// decodes only URL-relevant escapes instead of interpreting arbitrary JS.
+fn normalize_embedded_markup(body: &str) -> String {
+    body.replace(r"\/", "/")
+        .replace(r#"\""#, "\"")
+        .replace(r"\'", "'")
+        .replace(r"\u0026", "&")
+        .replace(r"\u003d", "=")
+        .replace(r"\u003f", "?")
+        .replace(r"\x26", "&")
+        .replace("&amp;", "&")
+        .replace("&#038;", "&")
+}
+
+pub(crate) fn extract_window_open_url(body: &str) -> Option<String> {
+    let normalized = normalize_embedded_markup(body);
+    let regex =
+        Regex::new(r#"(?is)window\s*\.\s*open\s*\(\s*[\"'](https?://[^\"']+)[\"']"#).ok()?;
+    let candidate = regex
+        .captures(&normalized)
+        .and_then(|captures| captures.get(1))?
+        .as_str()
+        .trim();
+    validate_http_download_url(candidate).ok()
+}
+
 pub(crate) fn extract_direct_download_url(body: &str) -> Option<String> {
-    let normalized = body.replace(r"\/", "/").replace("&", "&");
-    let re =
-        Regex::new(r#"https?://(?:dl\.fuckingfast\.co|fuckingfast\.co/dl)/[^\s"'<>\\]+"#).ok()?;
-    re.find(&normalized).map(|m| m.as_str().to_string())
+    let normalized = normalize_embedded_markup(body);
+    let regex =
+        Regex::new(r#"https?://(?:dl\.fuckingfast\.co|fuckingfast\.co/dl)/[^\s\"'<>\\]+"#).ok()?;
+    regex
+        .find(&normalized)
+        .and_then(|matched| validate_http_download_url(matched.as_str()).ok())
+}
+
+fn extract_download_candidate(body: &str) -> Option<String> {
+    extract_window_open_url(body).or_else(|| extract_direct_download_url(body))
 }
 
 fn is_rate_limited_body(body: &str) -> bool {
@@ -412,10 +519,54 @@ mod tests {
     #[test]
     fn extracts_direct_download_from_body() {
         let body =
-            r#"<a href="https://dl.fuckingfast.co/files/game.part01.rar?token=1">Download</a>"#;
+            r#"<a href=\"https://dl.fuckingfast.co/files/game.part01.rar?token=1\">Download</a>"#;
         assert_eq!(
             extract_direct_download_url(body),
             Some("https://dl.fuckingfast.co/files/game.part01.rar?token=1".to_string())
         );
+    }
+
+    #[test]
+    fn extracts_reference_style_window_open_url_on_any_cdn() {
+        let body = r#"
+            <html><script>noop()</script><script>noop()</script><script>noop()</script>
+            <script>window.open('https://cdn-files.example.net/signed/game.part01.rar?token=abc')</script></html>
+        "#;
+        assert_eq!(
+            extract_window_open_url(body),
+            Some("https://cdn-files.example.net/signed/game.part01.rar?token=abc".to_string())
+        );
+    }
+
+    #[test]
+    fn extracts_escaped_window_open_url() {
+        let body = r#"window.open(\"https:\/\/edge.example.com\/file.rar?x=1\u0026y=2\")"#;
+        assert_eq!(
+            extract_window_open_url(body),
+            Some("https://edge.example.com/file.rar?x=1&y=2".to_string())
+        );
+    }
+
+    #[test]
+    fn extracts_escaped_single_quoted_window_open_url() {
+        let body = r#"window.open(\'https:\/\/edge.example.com\/file.rar?x=1\u0026y=2\')"#;
+        assert_eq!(
+            extract_window_open_url(body),
+            Some("https://edge.example.com/file.rar?x=1&y=2".to_string())
+        );
+    }
+
+    #[test]
+    fn rejects_non_http_window_open_targets() {
+        let body = r#"window.open('javascript:alert(1)')"#;
+        assert_eq!(extract_window_open_url(body), None);
+    }
+
+    #[test]
+    fn treats_external_https_navigation_as_resolved() {
+        assert!(is_resolved_navigation_url(
+            "https://storage.example.net/download/file.rar?sig=1"
+        ));
+        assert!(!is_resolved_navigation_url("https://fuckingfast.co/abc123"));
     }
 }

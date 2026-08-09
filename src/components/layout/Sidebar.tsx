@@ -32,14 +32,14 @@ const navItems = [
 ];
 
 export default function Sidebar({ activeView, onSelectView }: SidebarProps) {
-  const { engineStatus, downloadSpeed, uploadSpeed } = useAppStore();
+  const { engineStatus, downloadSpeed, uploadSpeed, appearance } = useAppStore();
   const tasks = useTaskStore((state) => state.tasks);
 
   const getBadgeCount = (id: string) => {
     if (id === 'downloads') return tasks.length;
-    if (id === 'active') return tasks.filter(t => t.status === 'active' || t.status === 'waiting').length;
-    if (id === 'completed') return tasks.filter(t => t.status === 'complete').length;
-    if (id === 'errors') return tasks.filter(t => t.status === 'error').length;
+    if (id === 'active') return tasks.filter((task) => task.status === 'active' || task.status === 'waiting').length;
+    if (id === 'completed') return tasks.filter((task) => task.status === 'complete').length;
+    if (id === 'errors') return tasks.filter((task) => task.status === 'error').length;
     return null;
   };
 
@@ -62,9 +62,8 @@ export default function Sidebar({ activeView, onSelectView }: SidebarProps) {
   };
 
   return (
-    <aside className="w-60 h-full flex flex-col bg-[var(--md-sys-color-surface-container)] border-r border-[var(--md-sys-color-outline-variant)] relative z-10 select-none">
-      {/* Navigation Links - Material 3 Expressive Navigation Drawer with Tactile Feedback */}
-      <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+    <aside className={`${appearance.compact_mode ? 'w-52' : 'w-60'} h-full flex flex-col bg-[var(--md-sys-color-surface-container)] border-r border-[var(--md-sys-color-outline-variant)] relative z-10 select-none transition-[width] duration-200`}>
+      <nav className={`flex-1 px-3 ${appearance.compact_mode ? 'py-2' : 'py-4'} space-y-1 overflow-y-auto`}>
         {navItems.map((item) => {
           const isActive = activeView === item.id;
           const count = getBadgeCount(item.id);
@@ -73,7 +72,7 @@ export default function Sidebar({ activeView, onSelectView }: SidebarProps) {
             <button
               key={item.id}
               onClick={() => onSelectView(item.id)}
-              className={`w-full flex items-center justify-between px-4 py-2.5 rounded-full active-press transition-all duration-200 [transition-timing-function:var(--ease-emil-out)] group cursor-pointer ${
+              className={`w-full flex items-center justify-between px-4 ${appearance.compact_mode ? 'py-2' : 'py-2.5'} rounded-full active-press transition-all duration-200 [transition-timing-function:var(--ease-emil-out)] group cursor-pointer ${
                 isActive
                   ? 'bg-[var(--md-sys-color-secondary-container)] text-[var(--md-sys-color-on-secondary-container)] font-semibold shadow-sm'
                   : 'text-[var(--md-sys-color-on-surface-variant)] hover:bg-[var(--md-sys-color-surface-container-high)] hover:text-[var(--md-sys-color-on-surface)]'
@@ -86,7 +85,7 @@ export default function Sidebar({ activeView, onSelectView }: SidebarProps) {
                 <span className="text-xs font-medium">{item.label}</span>
               </div>
 
-              {count !== null && count > 0 && (
+              {appearance.show_badges && count !== null && count > 0 && (
                 <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full font-bold transition-all duration-200 ${
                   isActive
                     ? 'bg-[var(--md-sys-color-on-secondary-container)] text-[var(--md-sys-color-secondary-container)]'
@@ -100,7 +99,6 @@ export default function Sidebar({ activeView, onSelectView }: SidebarProps) {
         })}
       </nav>
 
-      {/* Footer Engine & Stats Card */}
       <div className="p-3.5 m-3 bg-[var(--md-sys-color-surface-container-high)] rounded-[var(--md-sys-shape-corner-medium)] border border-[var(--md-sys-color-outline-variant)]">
         <div className="flex items-center justify-between mb-2.5">
           <span className="text-[10px] font-bold text-[var(--md-sys-color-on-surface-variant)] tracking-wider uppercase">Engine</span>
@@ -115,13 +113,13 @@ export default function Sidebar({ activeView, onSelectView }: SidebarProps) {
             <span className="text-[var(--md-sys-color-on-surface-variant)] text-[11px] flex items-center gap-1">
               <AltArrowDown size={13} className="text-[var(--md-sys-color-primary)]" /> Down
             </span>
-            <span className="font-mono text-[11px] text-[var(--md-sys-color-primary)] font-semibold">{downloadSpeed || '0 KB/s'}</span>
+            <span className="font-mono text-[11px] text-[var(--md-sys-color-primary)] font-semibold">{downloadSpeed || '0 B/s'}</span>
           </div>
           <div className="flex items-center justify-between text-xs">
             <span className="text-[var(--md-sys-color-on-surface-variant)] text-[11px] flex items-center gap-1">
               <AltArrowUp size={13} className="text-[var(--md-sys-color-secondary)]" /> Up
             </span>
-            <span className="font-mono text-[11px] text-[var(--md-sys-color-secondary)] font-semibold">{uploadSpeed || '0 KB/s'}</span>
+            <span className="font-mono text-[11px] text-[var(--md-sys-color-secondary)] font-semibold">{uploadSpeed || '0 B/s'}</span>
           </div>
         </div>
       </div>
