@@ -4,7 +4,16 @@ import React from 'react';
 import type { Aria2Task } from '@/types';
 import { bytesToSize, formatSpeed, formatEta, formatProgress } from '@/lib/utils';
 import { SIcon } from '@/components/ui/SIcon';
-import { FileText, ArchiveDownMinimalistic, Clapperboard, Pause, Play, TrashBinTrash, Widget } from '@solar-icons/react';
+import {
+  FileText,
+  ArchiveDownMinimalistic,
+  Clapperboard,
+  Pause,
+  Play,
+  TrashBinTrash,
+  Widget,
+  Restart,
+} from '@solar-icons/react';
 
 interface TaskItemProps {
   task: Aria2Task;
@@ -13,6 +22,7 @@ interface TaskItemProps {
   onPause: (e: React.MouseEvent) => void;
   onResume: (e: React.MouseEvent) => void;
   onRemove: (e: React.MouseEvent) => void;
+  onRetry?: (e: React.MouseEvent) => void;
 }
 
 function FileTypeIcon({ extension }: { extension: string }) {
@@ -49,8 +59,19 @@ function getBadgeColor(status: string) {
   }
 }
 
-export default function TaskItem({ task, isSelected, onClick, onPause, onResume, onRemove }: TaskItemProps) {
+export default function TaskItem({
+  task,
+  isSelected,
+  onClick,
+  onPause,
+  onResume,
+  onRemove,
+  onRetry,
+}: TaskItemProps) {
   const isActive = task.status === 'active';
+  const canPause = task.status === 'active' || task.status === 'waiting';
+  const canResume = task.status === 'paused';
+  const canRetry = task.status === 'error' && Boolean(onRetry);
 
   const total = parseInt(task.totalLength, 10) || 0;
   const completed = parseInt(task.completedLength, 10) || 0;
@@ -92,7 +113,6 @@ export default function TaskItem({ task, isSelected, onClick, onPause, onResume,
             </div>
           </div>
 
-          {/* Progress Bar & Percentage */}
           <div className="flex items-center gap-3 mb-1.5">
             <div className="flex-1 h-1.5 bg-[var(--md-sys-color-surface-container-highest)] rounded-full overflow-hidden">
               <div
@@ -112,11 +132,10 @@ export default function TaskItem({ task, isSelected, onClick, onPause, onResume,
         </div>
       </div>
 
-      {/* Floating Hover Action Toolbar with Emil Kowalski Spring Transitions */}
       <div className={`absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1 p-1 bg-[var(--md-sys-color-surface-container-high)] rounded-[var(--md-sys-shape-corner-small)] border border-[var(--md-sys-color-outline-variant)] transition-all duration-200 [transition-timing-function:var(--ease-emil-out)] ${
         isSelected ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-3 group-hover:opacity-100 group-hover:translate-x-0'
       }`}>
-        {isActive ? (
+        {canPause && (
           <button
             onClick={onPause}
             className="w-7 h-7 rounded-[var(--md-sys-shape-corner-small)] flex items-center justify-center text-[var(--md-sys-color-on-surface-variant)] hover:bg-[var(--md-sys-color-surface-container-highest)] hover:text-[var(--md-sys-color-on-surface)] active-press cursor-pointer"
@@ -124,7 +143,8 @@ export default function TaskItem({ task, isSelected, onClick, onPause, onResume,
           >
             <SIcon icon={Pause} size={16} />
           </button>
-        ) : (
+        )}
+        {canResume && (
           <button
             onClick={onResume}
             className="w-7 h-7 rounded-[var(--md-sys-shape-corner-small)] flex items-center justify-center text-[var(--md-sys-color-on-surface-variant)] hover:bg-[var(--md-sys-color-surface-container-highest)] hover:text-[var(--md-sys-color-on-surface)] active-press cursor-pointer"
@@ -133,10 +153,19 @@ export default function TaskItem({ task, isSelected, onClick, onPause, onResume,
             <SIcon icon={Play} size={16} />
           </button>
         )}
+        {canRetry && onRetry && (
+          <button
+            onClick={onRetry}
+            className="w-7 h-7 rounded-[var(--md-sys-shape-corner-small)] flex items-center justify-center text-[var(--md-sys-color-on-surface-variant)] hover:bg-[var(--md-sys-color-surface-container-highest)] hover:text-[var(--md-sys-color-on-surface)] active-press cursor-pointer"
+            title="Retry download"
+          >
+            <SIcon icon={Restart} size={16} />
+          </button>
+        )}
         <button
           onClick={onRemove}
           className="w-7 h-7 rounded-[var(--md-sys-shape-corner-small)] flex items-center justify-center text-[var(--md-sys-color-on-surface-variant)] hover:bg-[var(--md-sys-color-error-container)] hover:text-[var(--md-sys-color-on-error-container)] active-press cursor-pointer"
-          title="Remove"
+          title={task.status === 'complete' || task.status === 'error' ? 'Remove from list' : 'Remove task'}
         >
           <SIcon icon={TrashBinTrash} size={16} />
         </button>

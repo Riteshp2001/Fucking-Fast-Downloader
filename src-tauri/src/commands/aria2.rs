@@ -14,6 +14,8 @@ use tauri_plugin_store::StoreExt;
 
 const ED2K_SEARCH_TEMP_PREFIX: &str = "ff-downloader-ed2k-search-";
 const ED2K_SEARCH_FILE_PREFIX: &str = "ff-downloader-ed2k-search-";
+const STREAM_FILE_OPTION: &str = "__ff-stream-file";
+const DEFAULT_BT_PRIORITY: &str = "head=64M,tail=32M";
 
 /// Fetch task list by type.
 #[tauri::command]
@@ -113,13 +115,28 @@ pub async fn aria2_get_option(
     state.0.get_option(&gid).await
 }
 
-/// Change per-task options.
+/// Change per-task options. The app-private stream selector is consumed by
+/// the backend and is never forwarded to aria2 as an unknown RPC option.
 #[tauri::command]
 pub async fn aria2_change_option(
     state: State<'_, Aria2State>,
     gid: String,
-    options: serde_json::Value,
+    mut options: serde_json::Value,
 ) -> Result<String, AppError> {
+    let stream_file = options
+        .as_object_mut()
+        .and_then(|object| object.remove(STREAM_FILE_OPTION))
+        .and_then(|value| value.as_str().map(str::to_string));
+
+    if let Some(file_index) = stream_file {
+        return crate::commands::torrent_stream::prepare_torrent_stream(
+            state.0.clone(),
+            &gid,
+            &file_index,
+        )
+        .await;
+    }
+
     state.0.change_option(&gid, options).await
 }
 
@@ -225,14 +242,30 @@ pub async fn aria2_add_uri(
     state.0.add_uri(uris, options).await
 }
 
-/// Add a torrent download from base64-encoded content.
+/// Add a torrent download from base64-encoded content with defaults that keep
+/// media files readable while verified pieces arrive.
 #[tauri::command]
 pub async fn aria2_add_torrent(
     state: State<'_, Aria2State>,
     torrent: String,
-    options: serde_json::Value,
+    mut options: serde_json::Value,
 ) -> Result<String, AppError> {
-    log::info!("aria2:add-torrent");
+    if !options.is_object() {
+        options = serde_json::json!({});
+    }
+    if let Some(object) = options.as_object_mut() {
+        object
+            .entry("file-allocation".to_string())
+            .or_insert_with(|| serde_json::Value::String("none".to_string()));
+        object
+            .entry("bt-prioritize-piece".to_string())
+            .or_insert_with(|| serde_json::Value::String(DEFAULT_BT_PRIORITY.to_string()));
+        object
+            .entry("bt-remove-unselected-file".to_string())
+            .or_insert_with(|| serde_json::Value::String("false".to_string()));
+    }
+
+    log::info!("aria2:add-torrent streaming-ready defaults applied");
     state.0.add_torrent(&torrent, options).await
 }
 
@@ -578,8 +611,21 @@ pub async fn aria2_batch_force_remove(
 
 #[cfg(test)]
 mod tests {
-    use super::{ed2k_search_temp_paths, sanitize_out_option};
+    use super::{
+        ed2k_search_temp_paths, sanitize_out_option, DEFAULT_BT_PRIORITY, STREAM_FILE_OPTION,
+    };
     use std::path::{Path, PathBuf};
+
+    #[test]
+    fn stream_option_is_app_private() {
+        assert!(STREAM_FILE_OPTION.starts_with("__ff-"));
+    }
+
+    #[test]
+    fn torrent_priority_covers_head_and_tail() {
+        assert!(DEFAULT_BT_PRIORITY.contains("head="));
+        assert!(DEFAULT_BT_PRIORITY.contains("tail="));
+    }
 
     // ── Existing #261 tests (updated for String return) ─────────────
 

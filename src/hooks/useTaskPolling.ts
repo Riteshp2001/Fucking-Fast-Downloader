@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { useAppStore } from '@/stores/app-store';
 import { useTaskStore } from '@/stores/task-store';
 import { fetchAllTasks, fetchGlobalStat, isTauri } from '@/lib/tauri';
+import { formatSpeed } from '@/lib/utils';
 
 export const useTaskPolling = () => {
   const engineStatus = useAppStore((state) => state.engineStatus);
@@ -12,8 +13,12 @@ export const useTaskPolling = () => {
     if (engineStatus !== 'running' || !isTauri()) return;
 
     let mounted = true;
+    let inFlight = false;
 
     const poll = async () => {
+      if (inFlight) return;
+      inFlight = true;
+
       try {
         const [tasks, stat] = await Promise.all([
           fetchAllTasks(),
@@ -21,11 +26,11 @@ export const useTaskPolling = () => {
         ]);
 
         if (mounted) {
-          if (tasks) setTasks(tasks);
+          setTasks(tasks);
           if (stat) {
             setStats({
-              downloadSpeed: stat.downloadSpeed,
-              uploadSpeed: stat.uploadSpeed,
+              downloadSpeed: formatSpeed(stat.downloadSpeed),
+              uploadSpeed: formatSpeed(stat.uploadSpeed),
               activeCount: parseInt(stat.numActive, 10) || 0,
               waitingCount: parseInt(stat.numWaiting, 10) || 0,
               stoppedCount: parseInt(stat.numStoppedTotal, 10) || 0,
@@ -34,15 +39,17 @@ export const useTaskPolling = () => {
         }
       } catch (error) {
         console.error('Failed to poll tasks:', error);
+      } finally {
+        inFlight = false;
       }
     };
 
-    poll();
-    const interval = setInterval(poll, 2000);
+    void poll();
+    const interval = window.setInterval(() => void poll(), 2000);
 
     return () => {
       mounted = false;
-      clearInterval(interval);
+      window.clearInterval(interval);
     };
   }, [engineStatus, setTasks, setStats]);
 };

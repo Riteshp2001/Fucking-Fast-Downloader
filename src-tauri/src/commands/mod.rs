@@ -15,6 +15,7 @@ pub mod protocol;
 pub mod provider;
 pub mod proxy;
 pub mod runtime_config;
+pub mod torrent_stream;
 pub mod tracker;
 pub mod ui;
 pub mod updater;

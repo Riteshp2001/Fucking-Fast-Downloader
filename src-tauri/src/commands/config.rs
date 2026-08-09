@@ -19,21 +19,26 @@ pub fn get_system_config(app: AppHandle) -> Result<Value, AppError> {
     Ok(Value::Object(entries))
 }
 
-/// Merges the given key-value pairs into the `system.json` store.
+/// Merges the given key-value pairs into the `system.json` store and flushes
+/// them to disk before returning. Callers can safely restart the engine after
+/// this command without racing the store's autosave interval.
 #[tauri::command]
 pub fn save_system_config(app: AppHandle, config: Value) -> Result<(), AppError> {
     let store = app
         .store("system.json")
         .map_err(|e| AppError::Store(e.to_string()))?;
-    if let Some(obj) = config.as_object() {
-        for (key, value) in obj {
-            store.set(key.clone(), value.clone());
-        }
+    let obj = config
+        .as_object()
+        .ok_or_else(|| AppError::Store("System configuration must be a JSON object".into()))?;
+
+    for (key, value) in obj {
+        store.set(key.clone(), value.clone());
     }
-    log::debug!(
-        "config:save-system keys={}",
-        config.as_object().map_or(0, serde_json::Map::len)
-    );
+    store
+        .save()
+        .map_err(|e| AppError::Store(format!("Failed to persist system configuration: {e}")))?;
+
+    log::debug!("config:save-system keys={}", obj.len());
     Ok(())
 }
 
@@ -58,17 +63,28 @@ pub fn factory_reset(app: AppHandle) -> Result<(), AppError> {
         .store("user.json")
         .map_err(|e| AppError::Store(e.to_string()))?;
     user_store.clear();
+    user_store
+        .save()
+        .map_err(|e| AppError::Store(format!("Failed to persist user reset: {e}")))?;
+
     let system_store = app
         .store("system.json")
         .map_err(|e| AppError::Store(e.to_string()))?;
     system_store.clear();
-    // Also clear config.json where frontend preferences are persisted
+    system_store
+        .save()
+        .map_err(|e| AppError::Store(format!("Failed to persist system reset: {e}")))?;
+
+    // Also clear config.json where frontend preferences are persisted.
     let config_store = app
         .store("config.json")
         .map_err(|e| AppError::Store(e.to_string()))?;
     config_store.clear();
+    config_store
+        .save()
+        .map_err(|e| AppError::Store(format!("Failed to persist preference reset: {e}")))?;
 
-    // Remove aria2 session file so downloads don't reappear after restart
+    // Remove aria2 session file so downloads don't reappear after restart.
     clear_session_file_inner(&app)?;
     crate::commands::bt_blocklist::remove_bt_peer_blocklist_cache(&app)?;
 

@@ -1,76 +1,129 @@
-import { useEffect } from 'react';
-import { listen, UnlistenFn } from '@tauri-apps/api/event';
+import { useCallback, useEffect, useRef } from 'react';
+import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { useAppStore } from '@/stores/app-store';
-import { startEngine, stopEngine, restartEngine, isTauri, EVENTS } from '@/lib/tauri';
+import { isTauri, restartEngine, startEngine, stopEngine, waitForEngine } from '@/lib/tauri';
+
+type EngineOperation = 'start' | 'restart';
+
+const MAX_AUTOMATIC_RECOVERY_ATTEMPTS = 2;
 
 export const useEngine = () => {
   const setEngineStatus = useAppStore((state) => state.setEngineStatus);
-  const engineStatus = useAppStore((state) => state.engineStatus);
+  const operationRef = useRef<Promise<boolean> | null>(null);
+  const recoveryAttemptsRef = useRef(0);
+
+  const bringEngineOnline = useCallback(async (operation: EngineOperation): Promise<boolean> => {
+    if (!isTauri()) return false;
+    if (operationRef.current) return operationRef.current;
+
+    const run = (async () => {
+      setEngineStatus('starting');
+      try {
+        if (operation === 'restart') {
+          await restartEngine();
+        } else {
+          await startEngine();
+        }
+
+        const ready = await waitForEngine();
+        if (!ready) {
+          throw new Error('The download engine started but its RPC endpoint never became ready.');
+        }
+
+        recoveryAttemptsRef.current = 0;
+        setEngineStatus('running');
+        return true;
+      } catch (error) {
+        console.error(`Failed to ${operation} download engine:`, error);
+        setEngineStatus('error');
+        return false;
+      } finally {
+        operationRef.current = null;
+      }
+    })();
+
+    operationRef.current = run;
+    return run;
+  }, [setEngineStatus]);
+
+  // Cold start only. Do not key this effect off `engineStatus`: doing that makes
+  // an intentional stop immediately start the engine again.
+  useEffect(() => {
+    if (!isTauri()) return;
+    void bringEngineOnline('start');
+  }, [bringEngineOnline]);
 
   useEffect(() => {
     if (!isTauri()) return;
 
-    let unlisten: UnlistenFn | undefined;
+    let disposed = false;
+    const unlisteners: UnlistenFn[] = [];
 
-    const setupListener = async () => {
+    const setupListeners = async () => {
       try {
-        unlisten = await listen<{ status: 'stopped' | 'starting' | 'running' | 'error' }>(EVENTS.ENGINE_STATUS, (event) => {
-          setEngineStatus(event.payload.status);
+        const crashUnlisten = await listen('engine-crashed', () => {
+          if (disposed) return;
+
+          setEngineStatus('error');
+          if (recoveryAttemptsRef.current >= MAX_AUTOMATIC_RECOVERY_ATTEMPTS) {
+            console.error('Download engine recovery stopped after repeated crashes.');
+            return;
+          }
+
+          recoveryAttemptsRef.current += 1;
+          void bringEngineOnline('restart');
         });
+        if (disposed) crashUnlisten(); else unlisteners.push(crashUnlisten);
+
+        const stoppedUnlisten = await listen('engine-stopped', () => {
+          if (!disposed && !operationRef.current) {
+            setEngineStatus('stopped');
+          }
+        });
+        if (disposed) stoppedUnlisten(); else unlisteners.push(stoppedUnlisten);
+
+        const recoveredUnlisten = await listen('engine-recovered', async () => {
+          if (disposed) return;
+          try {
+            const ready = await waitForEngine();
+            if (!disposed) setEngineStatus(ready ? 'running' : 'error');
+          } catch (error) {
+            console.error('Failed to verify recovered download engine:', error);
+            if (!disposed) setEngineStatus('error');
+          }
+        });
+        if (disposed) recoveredUnlisten(); else unlisteners.push(recoveredUnlisten);
       } catch (error) {
-        console.error('Failed to set up engine listener:', error);
+        console.error('Failed to set up engine lifecycle listeners:', error);
       }
     };
 
-    setupListener();
+    void setupListeners();
 
     return () => {
-      if (unlisten) unlisten();
+      disposed = true;
+      for (const unlisten of unlisteners) unlisten();
     };
-  }, [setEngineStatus]);
-
-  useEffect(() => {
-    if (isTauri() && engineStatus === 'stopped') {
-      const initEngine = async () => {
-        setEngineStatus('starting');
-        try {
-          await startEngine();
-        } catch (error) {
-          console.error('Failed to start engine:', error);
-          setEngineStatus('error');
-        }
-      };
-      
-      initEngine();
-    }
-  }, [engineStatus, setEngineStatus]);
+  }, [bringEngineOnline, setEngineStatus]);
 
   return {
     start: async () => {
-      setEngineStatus('starting');
-      try {
-        await startEngine();
-        setEngineStatus('running');
-      } catch {
-        setEngineStatus('error');
-      }
+      recoveryAttemptsRef.current = 0;
+      return bringEngineOnline('start');
     },
     stop: async () => {
+      if (!isTauri()) return;
       try {
         await stopEngine();
         setEngineStatus('stopped');
       } catch (error) {
-        console.error('Failed to stop engine:', error);
+        console.error('Failed to stop download engine:', error);
+        setEngineStatus('error');
       }
     },
     restart: async () => {
-      setEngineStatus('starting');
-      try {
-        await restartEngine();
-        setEngineStatus('running');
-      } catch {
-        setEngineStatus('error');
-      }
-    }
+      recoveryAttemptsRef.current = 0;
+      return bringEngineOnline('restart');
+    },
   };
 };
