@@ -1,5 +1,5 @@
 use crate::providers::cloudflare::CloudflareHandler;
-use crate::providers::fitgirl::fuckingfast::FuckingFastResolver;
+use crate::providers::fuckingfast::FuckingFastResolver;
 use crate::providers::{GameDetail, ProviderRegistry, SearchResult};
 use std::sync::Arc;
 use tauri::{AppHandle, State};

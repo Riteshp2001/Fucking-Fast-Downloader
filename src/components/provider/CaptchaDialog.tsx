@@ -15,7 +15,7 @@ export default function CaptchaDialog({ isOpen, onClose, url }: CaptchaDialogPro
 
   const handleSolve = async () => {
     try {
-      await solveProviderCaptcha('fitgirl', url);
+      await solveProviderCaptcha('default', url);
       onClose();
     } catch (err) {
       console.error('Captcha solving failed:', err);
@@ -31,7 +31,7 @@ export default function CaptchaDialog({ isOpen, onClose, url }: CaptchaDialogPro
         </div>
         <h3 className="text-sm font-bold text-[var(--md-sys-color-on-surface)] mb-2">DDoS-Guard Verification</h3>
         <p className="text-xs text-[var(--md-sys-color-on-surface-variant)] mb-5 leading-relaxed">
-          FitGirl-repacks.site is protected by DDoS-Guard. A browser window will open for you to complete the verification.
+          This site is protected by DDoS-Guard. A browser window will open for you to complete the verification.
         </p>
         <div className="flex gap-3 justify-center">
           <button

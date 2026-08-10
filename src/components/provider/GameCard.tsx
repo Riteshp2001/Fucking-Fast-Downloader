@@ -15,7 +15,7 @@ export default function GameCard({ result, onSelect }: GameCardProps) {
     try {
       return new URL(result.url).hostname.replace(/^www\./, '');
     } catch {
-      return 'fitgirl';
+      return 'unknown';
     }
   }, [result.url]);
   const hasImage = Boolean(result.image && !imageFailed);
@@ -49,7 +49,7 @@ export default function GameCard({ result, onSelect }: GameCardProps) {
         </h3>
         <div className="flex flex-wrap items-center gap-1.5 mt-2">
           <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-teal-500/10 text-teal-300 border border-teal-500/25">
-            FitGirl
+            Repack
           </span>
           {result.size && (
             <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/25">

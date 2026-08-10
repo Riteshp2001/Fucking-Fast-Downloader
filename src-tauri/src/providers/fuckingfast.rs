@@ -106,7 +106,6 @@ impl FuckingFastResolver {
             .header(header::ACCEPT_LANGUAGE, "en-US,en;q=0.9")
             .header(header::CACHE_CONTROL, "no-cache")
             .header(header::PRAGMA, "no-cache")
-            .header(header::REFERER, "https://fitgirl-repacks.site/")
             .header(header::UPGRADE_INSECURE_REQUESTS, "1")
             .header("Sec-Fetch-Dest", "document")
             .header("Sec-Fetch-Mode", "navigate")
@@ -477,19 +476,19 @@ mod tests {
     fn extracts_file_id_from_user_sample_urls() {
         assert_eq!(
             extract_file_id(
-                "https://fuckingfast.co/rwhe4g1lwtqe#LIFTED_--*fitgirl-repacks.site*--_.part1.rar"
+                "https://fuckingfast.co/rwhe4g1lwtqe#some-file.part1.rar"
             ),
             Some("rwhe4g1lwtqe".to_string())
         );
         assert_eq!(
             extract_file_id(
-                "https://fuckingfast.co/1e9i2l04sf68#LIFTED_--*fitgirl-repacks.site*--_.part2.rar"
+                "https://fuckingfast.co/1e9i2l04sf68#some-file.part2.rar"
             ),
             Some("1e9i2l04sf68".to_string())
         );
         assert_eq!(
             extract_file_id(
-                "https://fuckingfast.co/c7cdq0xald3y#LIFTED_--*fitgirl-repacks.site*--_.part3.rar"
+                "https://fuckingfast.co/c7cdq0xald3y#some-file.part3.rar"
             ),
             Some("c7cdq0xald3y".to_string())
         );

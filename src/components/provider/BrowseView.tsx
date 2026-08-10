@@ -44,7 +44,7 @@ export default function BrowseView({ onOpenAddDialog }: BrowseViewProps) {
         <div className="p-3 bg-red-500/15 border border-red-500/30 text-red-400 text-xs rounded-xl">
           {error}
           <button
-            onClick={() => setCaptchaUrl('https://fitgirl-repacks.site')}
+            onClick={() => setCaptchaUrl('https://fuckingfast.co')}
             className="ml-2 underline"
           >
             Solve Captcha
@@ -63,7 +63,7 @@ export default function BrowseView({ onOpenAddDialog }: BrowseViewProps) {
           <div>
             <h3 className="text-sm font-bold text-[var(--md-sys-color-on-surface-variant)] mb-1">Search for games</h3>
             <p className="text-xs text-[var(--md-sys-color-on-surface-variant)]/60">
-              Search FitGirl-repacks.site for repacked games
+              Search for repacked games
             </p>
           </div>
         </div>

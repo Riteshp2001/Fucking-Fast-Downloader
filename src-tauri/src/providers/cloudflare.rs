@@ -75,7 +75,7 @@ impl CloudflareHandler {
             url::Url::parse(url).map_err(|_| ProviderError::Internal("Invalid URL".into()))?;
 
         let builder = WebviewWindowBuilder::new(app, label, WebviewUrl::External(parsed_url))
-            .title("FitGirl - DDoS-Guard Verification")
+            .title("DDoS-Guard Verification")
             .inner_size(800.0, 700.0)
             .resizable(true)
             .center();

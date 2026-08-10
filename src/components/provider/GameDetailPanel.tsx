@@ -26,7 +26,7 @@ export default function GameDetailPanel({ result, onClose, onAddDownload }: Game
         setLoading(true);
         setError(null);
         setDetail(null);
-        return fetchGameDetail('fitgirl', result.url);
+        return fetchGameDetail('default', result.url);
       })
       .then((d) => { if (!cancelled && d) setDetail(d); })
       .catch((err) => { if (!cancelled) setError(err instanceof Error ? err.message : String(err)); })

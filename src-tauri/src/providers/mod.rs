@@ -1,7 +1,7 @@
 pub mod cache;
 pub mod cloudflare;
 pub mod error;
-pub mod fitgirl;
+pub mod fuckingfast;
 
 use async_trait::async_trait;
 pub use error::ProviderError;

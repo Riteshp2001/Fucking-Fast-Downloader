@@ -262,23 +262,17 @@ fn setup_app(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         app.manage(history::HistoryDbState(std::sync::Arc::new(history_db)));
     }
 
-    // Provider cache + Cloudflare handler + FitGirl provider registry.
+    // Provider cache + Cloudflare handler + Provider registry.
     {
         let app_data = app.path().app_data_dir()?;
         let cache_path = app_data.join("provider_cache.db");
-        let provider_cache = providers::cache::ProviderCache::open(&cache_path)
+        let _provider_cache = providers::cache::ProviderCache::open(&cache_path)
             .map_err(|e| format!("Failed to open provider cache: {e}"))?;
         let cloudflare = std::sync::Arc::new(tokio::sync::Mutex::new(
             providers::cloudflare::CloudflareHandler::new(&app_data),
         ));
 
-        let mut registry = providers::ProviderRegistry::new();
-        let fitgirl = providers::fitgirl::FitGirlProvider::new(
-            provider_cache,
-            cloudflare.clone(),
-            app.handle().clone(),
-        );
-        registry.register(Box::new(fitgirl));
+        let registry = providers::ProviderRegistry::new();
         app.manage(std::sync::Arc::new(tokio::sync::Mutex::new(registry)));
         app.manage(cloudflare);
     }

@@ -31,7 +31,7 @@ export default function SearchBar({ onResults, onLoading, onError }: SearchBarPr
     onError(null);
 
     try {
-      const results = await searchProvider('fitgirl', q.trim());
+      const results = await searchProvider('default', q.trim());
       if (requestId === requestRef.current) {
         onResults(results);
       }
