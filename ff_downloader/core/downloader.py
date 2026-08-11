@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import threading
 import time
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Callable
 from urllib.parse import unquote, urlparse
 
 from curl_cffi import requests
+from curl_cffi.requests.exceptions import RequestException
 
 from ff_downloader.config import (
     BASE_HEADERS,
@@ -74,7 +75,10 @@ class DownloadEngine:
                 total = 0
         if not total:
             total = int(response.headers.get("content-length", 0) or 0)
-        supports_ranges = response.status_code == 206 or "bytes" in response.headers.get("accept-ranges", "").lower()
+        supports_ranges = (
+            response.status_code == 206
+            or "bytes" in response.headers.get("accept-ranges", "").lower()
+        )
         response.close()
         return total, supports_ranges
 
@@ -119,18 +123,17 @@ class DownloadEngine:
                         self._checkpoint()
                         if not block:
                             continue
-                        with self._write_lock:
-                            with destination.open("r+b") as handle:
-                                handle.seek(cursor)
-                                handle.write(block)
+                        with self._write_lock, destination.open("r+b") as handle:
+                            handle.seek(cursor)
+                            handle.write(block)
                         cursor += len(block)
                     return cursor - start
                 except DownloadCancelled:
                     raise
-                except Exception:
+                except (RequestException, OSError, RuntimeError):
                     if attempt == 2:
                         raise
-                    time.sleep(1.5 ** attempt)
+                    time.sleep(1.5**attempt)
             return 0
 
         with ThreadPoolExecutor(max_workers=DOWNLOAD_WORKERS) as pool:
