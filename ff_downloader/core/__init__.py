@@ -1,5 +1,6 @@
 from .downloader import DownloadCancelled, DownloadEngine
-from .resolver import FuckingFastResolver, ResolutionError
+from .errors import ResolutionError
+from .resolver import FuckingFastResolver
 
 __all__ = [
     "DownloadCancelled",

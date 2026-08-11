@@ -1,3 +1,4 @@
 PyQt5>=5.15.10
-curl_cffi>=0.13.0
+requests>=2.31.0
 beautifulsoup4>=4.12.3
+camoufox>=0.5.0

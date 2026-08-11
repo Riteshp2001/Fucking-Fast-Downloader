@@ -5,8 +5,9 @@ description = "PyQt desktop downloader for public FuckingFast share links"
 requires-python = ">=3.10"
 dependencies = [
   "PyQt5>=5.15.10",
-  "curl_cffi>=0.13.0",
+  "requests>=2.31.0",
   "beautifulsoup4>=4.12.3",
+  "camoufox>=0.5.0",
 ]
 
 [tool.ruff]
@@ -16,6 +17,9 @@ target-version = "py310"
 [tool.ruff.lint.per-file-ignores]
 # Session-log timestamps intentionally display the user's local wall-clock time.
 "ff_downloader/ui/main_window.py" = ["DTZ005"]
+# Browser polling/teardown loops intentionally swallow transient exceptions,
+# mirroring the upstream Fitgirl-Easy-Downloader flow.
+"ff_downloader/core/browser_resolver.py" = ["S110", "BLE001"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

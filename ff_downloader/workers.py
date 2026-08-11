@@ -3,8 +3,8 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
-from curl_cffi.requests.exceptions import RequestException
 from PyQt5 import QtCore
+from requests.exceptions import RequestException
 
 from ff_downloader.config import BETWEEN_LINK_DELAY, DOWNLOADS_DIR
 from ff_downloader.core import (
@@ -31,6 +31,8 @@ class ResolveWorker(QtCore.QThread):
             self.resolved.emit([item.direct_url for item in results])
         except ResolutionError as exc:
             self.failed.emit(str(exc))
+        finally:
+            resolver.close()
 
 
 class DownloadWorker(QtCore.QThread):
@@ -68,7 +70,7 @@ class DownloadWorker(QtCore.QThread):
             for index, source in enumerate(expanded):
                 try:
                     direct = self.resolver.resolve(source)
-                    filename = self.engine.filename_from_url(direct)
+                    filename = self.engine.filename_from_link(source) or self.engine.filename_from_url(direct)
                     self.current_file.emit(filename)
                     self.log.emit(f"Downloading {filename}")
                     self.engine.download(direct, self.directory / filename)
@@ -84,4 +86,5 @@ class DownloadWorker(QtCore.QThread):
         except ResolutionError as exc:
             self.failed.emit("", str(exc))
         finally:
+            self.resolver.close()
             self.all_done.emit()

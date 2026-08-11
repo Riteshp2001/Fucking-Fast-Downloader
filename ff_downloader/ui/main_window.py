@@ -1,23 +1,141 @@
 from __future__ import annotations
 
+import typing
 from datetime import datetime
 from pathlib import Path
 
-from PyQt5 import QtCore, QtWidgets
+from PyQt5 import QtCore, QtGui, QtWidgets
 
 from ff_downloader.config import APP_NAME, APP_VERSION, DOWNLOADS_DIR
 from ff_downloader.ui.solar_icons import SolarIconFactory
 from ff_downloader.workers import DownloadWorker, ResolveWorker
 
 
+class TitleBar(QtWidgets.QFrame):
+    """Draggable custom title bar with window controls.
+
+    Move / resize use the native system APIs (startSystemMove /
+    startSystemResize), so behaviour stays consistent across Windows,
+    macOS and Linux.
+    """
+
+    def __init__(self, on_minimize, on_maximize, on_close, parent=None):
+        super().__init__(parent)
+        self.setObjectName("titleBar")
+        self.setFixedHeight(46)
+
+        layout = QtWidgets.QHBoxLayout(self)
+        layout.setContentsMargins(14, 0, 0, 0)
+        layout.setSpacing(8)
+
+        brand_icon = QtWidgets.QLabel()
+        brand_icon.setPixmap(SolarIconFactory.icon("download", "#7BDCB5", 18).pixmap(18, 18))
+        brand_icon.setObjectName("titleBrandIcon")
+        layout.addWidget(brand_icon)
+
+        brand = QtWidgets.QLabel(APP_NAME)
+        brand.setObjectName("titleBrand")
+        layout.addWidget(brand)
+
+        version = QtWidgets.QLabel(f"v{APP_VERSION}")
+        version.setObjectName("titleVersion")
+        layout.addWidget(version)
+
+        layout.addStretch(1)
+
+        def win_button(icon_name: str, tooltip: str, danger: bool = False) -> QtWidgets.QPushButton:
+            button = QtWidgets.QPushButton()
+            button.setObjectName("winClose" if danger else "winButton")
+            button.setIcon(SolarIconFactory.icon(icon_name, "#D8DEE9", 13))
+            button.setIconSize(QtCore.QSize(13, 13))
+            button.setFixedSize(46, 34)
+            button.setCursor(QtCore.Qt.PointingHandCursor)
+            button.setToolTip(tooltip)
+            button.setFocusPolicy(QtCore.Qt.NoFocus)
+            return button
+
+        self.min_button = win_button("minimize", "Minimize")
+        self.max_button = win_button("maximize", "Maximize")
+        self.close_button = win_button("close", "Close", danger=True)
+
+        self.min_button.clicked.connect(on_minimize)
+        self.max_button.clicked.connect(on_maximize)
+        self.close_button.clicked.connect(on_close)
+
+        layout.addWidget(self.min_button)
+        layout.addWidget(self.max_button)
+        layout.addWidget(self.close_button)
+
+        self._maximized = False
+
+    def set_maximized(self, maximized: bool) -> None:
+        self._maximized = maximized
+        if maximized:
+            self.max_button.setIcon(SolarIconFactory.icon("restore", "#D8DEE9", 13))
+            self.max_button.setToolTip("Restore")
+        else:
+            self.max_button.setIcon(SolarIconFactory.icon("maximize", "#D8DEE9", 13))
+            self.max_button.setToolTip("Maximize")
+
+    def mousePressEvent(self, event: QtGui.QMouseEvent) -> None:
+        if event.button() == QtCore.Qt.LeftButton and not self.window().isMaximized():
+            handle = self.window().windowHandle()
+            if handle is not None:
+                handle.startSystemMove()
+        super().mousePressEvent(event)
+
+    def mouseDoubleClickEvent(self, event: QtGui.QMouseEvent) -> None:
+        if event.button() == QtCore.Qt.LeftButton:
+            self.max_button.click()
+        super().mouseDoubleClickEvent(event)
+
+
+class ResizeHandle(QtWidgets.QWidget):
+    """Invisible edge/corner strip that starts a native window resize."""
+
+    CURSORS: typing.ClassVar[dict[int, QtCore.Qt.CursorShape]] = {
+        QtCore.Qt.LeftEdge: QtCore.Qt.SizeHorCursor,
+        QtCore.Qt.RightEdge: QtCore.Qt.SizeHorCursor,
+        QtCore.Qt.TopEdge: QtCore.Qt.SizeVerCursor,
+        QtCore.Qt.BottomEdge: QtCore.Qt.SizeVerCursor,
+        QtCore.Qt.LeftEdge | QtCore.Qt.TopEdge: QtCore.Qt.SizeFDiagCursor,
+        QtCore.Qt.RightEdge | QtCore.Qt.TopEdge: QtCore.Qt.SizeBDiagCursor,
+        QtCore.Qt.LeftEdge | QtCore.Qt.BottomEdge: QtCore.Qt.SizeBDiagCursor,
+        QtCore.Qt.RightEdge | QtCore.Qt.BottomEdge: QtCore.Qt.SizeFDiagCursor,
+    }
+
+    def __init__(self, edges, thickness: int = 7, parent=None):
+        super().__init__(parent)
+        self._edges = edges
+        self.setCursor(self.CURSORS.get(edges, QtCore.Qt.ArrowCursor))
+        if edges in (QtCore.Qt.LeftEdge, QtCore.Qt.RightEdge):
+            self.setFixedWidth(thickness)
+        elif edges in (QtCore.Qt.TopEdge, QtCore.Qt.BottomEdge):
+            self.setFixedHeight(thickness)
+        else:
+            self.setFixedSize(thickness, thickness)
+
+    def mousePressEvent(self, event: QtGui.QMouseEvent) -> None:
+        if event.button() == QtCore.Qt.LeftButton and not self.window().isMaximized():
+            handle = self.window().windowHandle()
+            if handle is not None:
+                handle.startSystemResize(self._edges)
+        super().mousePressEvent(event)
+
+
 class MainWindow(QtWidgets.QMainWindow):
     ACCENT = "#7BDCB5"
     TEXT = "#E8EDF3"
-    MUTED = "#8D99A8"
+    MUTED = "#93A0AE"
 
     def __init__(self):
         super().__init__()
         self.setWindowTitle(f"{APP_NAME} {APP_VERSION}")
+        self.setWindowFlags(
+            QtCore.Qt.FramelessWindowHint
+            | QtCore.Qt.Window
+            | QtCore.Qt.WindowMinimizeButtonHint
+        )
         self.resize(1120, 760)
         self.setMinimumSize(900, 620)
         self.resolve_worker: ResolveWorker | None = None
@@ -54,16 +172,49 @@ class MainWindow(QtWidgets.QMainWindow):
         root.setObjectName("root")
         self.setCentralWidget(root)
         shell = QtWidgets.QVBoxLayout(root)
-        shell.setContentsMargins(24, 20, 24, 22)
-        shell.setSpacing(16)
+        shell.setContentsMargins(0, 0, 0, 0)
+        shell.setSpacing(0)
+
+        self.title_bar = TitleBar(
+            on_minimize=self.showMinimized,
+            on_maximize=self._toggle_maximize,
+            on_close=self.close,
+        )
+        shell.addWidget(self.title_bar)
+
+        resize_frame = QtWidgets.QWidget()
+        resize_layout = QtWidgets.QGridLayout(resize_frame)
+        resize_layout.setContentsMargins(0, 0, 0, 0)
+        resize_layout.setSpacing(0)
+
+        def edge(row, col, edges):
+            resize_layout.addWidget(ResizeHandle(edges), row, col)
+
+        edge(0, 0, QtCore.Qt.LeftEdge | QtCore.Qt.TopEdge)
+        edge(0, 1, QtCore.Qt.TopEdge)
+        edge(0, 2, QtCore.Qt.RightEdge | QtCore.Qt.TopEdge)
+        edge(1, 0, QtCore.Qt.LeftEdge)
+        edge(1, 2, QtCore.Qt.RightEdge)
+        edge(2, 0, QtCore.Qt.LeftEdge | QtCore.Qt.BottomEdge)
+        edge(2, 1, QtCore.Qt.BottomEdge)
+        edge(2, 2, QtCore.Qt.RightEdge | QtCore.Qt.BottomEdge)
+
+        content = QtWidgets.QWidget()
+        content.setObjectName("content")
+        resize_layout.addWidget(content, 1, 1)
+        shell.addWidget(resize_frame, 1)
+
+        body = QtWidgets.QVBoxLayout(content)
+        body.setContentsMargins(24, 16, 24, 22)
+        body.setSpacing(16)
 
         header = QtWidgets.QHBoxLayout()
         brand = QtWidgets.QVBoxLayout()
         eyebrow = QtWidgets.QLabel("DESKTOP DOWNLOAD MANAGER")
         eyebrow.setObjectName("eyebrow")
-        title = QtWidgets.QLabel(APP_NAME)
+        title = QtWidgets.QLabel("Download anything. Fast.")
         title.setObjectName("appTitle")
-        subtitle = QtWidgets.QLabel("Resolve links, validate redirects and download without clutter.")
+        subtitle = QtWidgets.QLabel("Paste FuckingFast links, resolve them past Cloudflare, and download without clutter.")
         subtitle.setObjectName("subtitle")
         brand.addWidget(eyebrow)
         brand.addWidget(title)
@@ -72,7 +223,7 @@ class MainWindow(QtWidgets.QMainWindow):
         header.addStretch(1)
         self.folder_btn = self._button("Download folder", "folder")
         header.addWidget(self.folder_btn)
-        shell.addLayout(header)
+        body.addLayout(header)
 
         action_bar = QtWidgets.QFrame()
         action_bar.setObjectName("actionBar")
@@ -83,12 +234,15 @@ class MainWindow(QtWidgets.QMainWindow):
         self.validate_btn = self._button("Resolve", "shield")
         self.copy_btn = self._button("Copy resolved", "copy")
         self.download_btn = self._button("Download all", "download", primary=True)
+        hint = QtWidgets.QLabel("Ctrl+V paste · Ctrl+C copy")
+        hint.setObjectName("shortcutHint")
         action_layout.addWidget(self.paste_btn)
         action_layout.addWidget(self.validate_btn)
         action_layout.addWidget(self.copy_btn)
         action_layout.addStretch(1)
+        action_layout.addWidget(hint)
         action_layout.addWidget(self.download_btn)
-        shell.addWidget(action_bar)
+        body.addWidget(action_bar)
 
         splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
         splitter.setChildrenCollapsible(False)
@@ -108,7 +262,9 @@ class MainWindow(QtWidgets.QMainWindow):
         queue_head.addStretch(1)
         queue_head.addWidget(self.queue_count)
         queue_layout.addLayout(queue_head)
-        helper = QtWidgets.QLabel("Paste FuckingFast links or a supported source page. Resolved direct links replace the queue in-place.")
+        helper = QtWidgets.QLabel(
+            "Paste FuckingFast links or a fitgirl-repacks.site page. Right-click a link to copy or remove it. Resolved direct links replace the queue in-place."
+        )
         helper.setObjectName("helper")
         helper.setWordWrap(True)
         queue_layout.addWidget(helper)
@@ -117,6 +273,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.link_list.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
         self.link_list.setAlternatingRowColors(False)
         self.link_list.setSpacing(2)
+        self.link_list.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
         queue_layout.addWidget(self.link_list, 1)
         splitter.addWidget(queue_card)
 
@@ -182,20 +339,17 @@ class MainWindow(QtWidgets.QMainWindow):
         splitter.addWidget(activity_card)
         splitter.setStretchFactor(0, 4)
         splitter.setStretchFactor(1, 6)
-        shell.addWidget(splitter, 1)
+        body.addWidget(splitter, 1)
 
         footer = QtWidgets.QHBoxLayout()
         status_icon = QtWidgets.QLabel()
         status_icon.setPixmap(SolarIconFactory.icon("link", self.ACCENT, 16).pixmap(16, 16))
         self.status_text = QtWidgets.QLabel("Ready")
         self.status_text.setObjectName("footerText")
-        version = QtWidgets.QLabel(f"v{APP_VERSION}")
-        version.setObjectName("footerText")
         footer.addWidget(status_icon)
         footer.addWidget(self.status_text)
         footer.addStretch(1)
-        footer.addWidget(version)
-        shell.addLayout(footer)
+        body.addLayout(footer)
 
     def _connect(self) -> None:
         self.paste_btn.clicked.connect(self.paste_links)
@@ -209,34 +363,62 @@ class MainWindow(QtWidgets.QMainWindow):
         self.link_list.model().rowsInserted.connect(lambda *_: self._sync_count())
         self.link_list.model().rowsRemoved.connect(lambda *_: self._sync_count())
         self.link_list.model().modelReset.connect(self._sync_count)
+        self.link_list.customContextMenuRequested.connect(self._link_menu)
+
+        paste_shortcut = QtWidgets.QShortcut(QtGui.QKeySequence.Paste, self)
+        paste_shortcut.activated.connect(self.paste_links)
+        copy_shortcut = QtWidgets.QShortcut(QtGui.QKeySequence.Copy, self)
+        copy_shortcut.activated.connect(self.copy_links)
+
+    def _toggle_maximize(self) -> None:
+        if self.isMaximized():
+            self.showNormal()
+        else:
+            self.showMaximized()
+
+    def changeEvent(self, event: QtCore.QEvent) -> None:
+        if event.type() == QtCore.QEvent.WindowStateChange:
+            self.title_bar.set_maximized(self.isMaximized())
+        super().changeEvent(event)
 
     def _apply_theme(self) -> None:
         self.setStyleSheet(f"""
             QWidget#root {{ background: #0B0E12; color: {self.TEXT}; }}
             QLabel {{ color: {self.TEXT}; }}
+            QFrame#titleBar {{ background: #10141A; border-bottom: 1px solid #232B35; }}
+            QLabel#titleBrand {{ font-size: 13px; font-weight: 750; letter-spacing: .3px; }}
+            QLabel#titleVersion {{ color: #6F7B89; font-size: 10px; font-weight: 600; padding-top: 2px; }}
+            QPushButton#winButton, QPushButton#winClose {{ background: transparent; border: none; border-radius: 8px; }}
+            QPushButton#winButton:hover {{ background: #1E2730; }}
+            QPushButton#winClose:hover {{ background: #E5484D; }}
+            QPushButton#winButton:pressed, QPushButton#winClose:pressed {{ background: #17202A; }}
             QLabel#eyebrow {{ color: {self.ACCENT}; font-size: 10px; font-weight: 700; letter-spacing: 1.4px; }}
             QLabel#appTitle {{ font-size: 28px; font-weight: 750; }}
-            QLabel#subtitle, QLabel#helper, QLabel#footerText, QLabel#pathLabel {{ color: {self.MUTED}; }}
+            QLabel#subtitle, QLabel#helper, QLabel#footerText, QLabel#pathLabel, QLabel#shortcutHint {{ color: {self.MUTED}; }}
             QLabel#subtitle {{ font-size: 12px; }}
             QLabel#helper {{ font-size: 11px; line-height: 1.4; }}
+            QLabel#shortcutHint {{ font-size: 10px; font-weight: 600; }}
             QLabel#sectionTitle {{ font-size: 16px; font-weight: 700; }}
             QLabel#subsectionTitle {{ font-size: 12px; font-weight: 650; }}
             QLabel#fileName {{ font-size: 15px; font-weight: 650; padding: 2px 0; }}
-            QLabel#pill, QLabel#statePill {{ background: #171D24; border: 1px solid #252D36; border-radius: 11px; padding: 4px 9px; color: #AAB5C2; font-size: 10px; font-weight: 700; }}
+            QLabel#pill, QLabel#statePill {{ background: #171D24; border: 1px solid #28323D; border-radius: 11px; padding: 4px 9px; color: #AAB5C2; font-size: 10px; font-weight: 700; }}
             QLabel#statePill {{ color: {self.ACCENT}; }}
-            QFrame#card, QFrame#actionBar {{ background: #11151A; border: 1px solid #202730; border-radius: 16px; }}
-            QFrame#metricCard {{ background: #0D1116; border: 1px solid #202730; border-radius: 12px; }}
+            QFrame#card, QFrame#actionBar {{ background: #12161C; border: 1px solid #232B35; border-radius: 14px; }}
+            QFrame#metricCard {{ background: #0D1116; border: 1px solid #232B35; border-radius: 10px; }}
             QLabel#metricLabel {{ color: #6F7B89; font-size: 9px; font-weight: 700; letter-spacing: .8px; }}
             QLabel#metricValue {{ font-size: 14px; font-weight: 700; }}
-            QPushButton {{ background: #161B21; color: {self.TEXT}; border: 1px solid #28313B; border-radius: 10px; padding: 0 14px; font-weight: 600; }}
-            QPushButton:hover {{ background: #1B222A; border-color: #394653; }}
-            QPushButton:pressed {{ background: #0F1318; }}
+            QPushButton {{ background: #1A2129; color: {self.TEXT}; border: 1px solid #2C3742; border-radius: 10px; padding: 0 14px; font-weight: 600; }}
+            QPushButton:hover {{ background: #222B35; border-color: #3C4956; }}
+            QPushButton:pressed {{ background: #131920; }}
             QPushButton[primary="true"] {{ background: {self.ACCENT}; color: #07110D; border-color: {self.ACCENT}; }}
             QPushButton[primary="true"]:hover {{ background: #8BE5C0; }}
-            QListWidget#linkList, QTextEdit#logView {{ background: #0C1014; border: 1px solid #202730; border-radius: 12px; padding: 8px; selection-background-color: #24473B; selection-color: #F2FFF9; }}
-            QListWidget#linkList::item {{ min-height: 34px; padding: 4px 8px; border-radius: 8px; }}
-            QListWidget#linkList::item:hover {{ background: #141A20; }}
+            QListWidget#linkList, QTextEdit#logView {{ background: #0C1014; border: 1px solid #232B35; border-radius: 10px; padding: 8px; selection-background-color: #24473B; selection-color: #F2FFF9; }}
+            QListWidget#linkList::item {{ min-height: 34px; padding: 4px 8px; border-radius: 7px; }}
+            QListWidget#linkList::item:hover {{ background: #151B22; }}
             QTextEdit#logView {{ color: #AAB4C0; font-family: 'Cascadia Mono', 'Consolas', monospace; font-size: 10px; }}
+            QMenu {{ background: #13181E; color: {self.TEXT}; border: 1px solid #2C3742; border-radius: 8px; padding: 4px; }}
+            QMenu::item {{ padding: 6px 22px 6px 12px; border-radius: 5px; }}
+            QMenu::item:selected {{ background: #24473B; color: #F2FFF9; }}
             QProgressBar {{ background: #1B2229; border: none; border-radius: 5px; }}
             QProgressBar::chunk {{ background: {self.ACCENT}; border-radius: 5px; }}
             QSplitter::handle {{ background: transparent; }}
@@ -261,6 +443,32 @@ class MainWindow(QtWidgets.QMainWindow):
         self._sync_count()
         self.status_text.setText(f"Loaded {len(unique)} link(s)")
         self.log(f"Loaded {len(unique)} link(s) from clipboard")
+
+    def _link_menu(self, position: QtCore.QPoint) -> None:
+        menu = QtWidgets.QMenu(self)
+        copy_action = menu.addAction("Copy selected")
+        copy_all_action = menu.addAction("Copy all")
+        menu.addSeparator()
+        remove_action = menu.addAction("Remove selected")
+        clear_action = menu.addAction("Clear queue")
+        action = menu.exec_(self.link_list.mapToGlobal(position))
+
+        selected = [item.text() for item in self.link_list.selectedItems()]
+        if action is copy_action:
+            if selected:
+                QtWidgets.QApplication.clipboard().setText("\n".join(selected))
+                self.status_text.setText(f"Copied {len(selected)} link(s)")
+                self.log(f"Copied {len(selected)} link(s)")
+        elif action is copy_all_action:
+            self.copy_links()
+        elif action is remove_action:
+            for item in self.link_list.selectedItems():
+                self.link_list.takeItem(self.link_list.row(item))
+            self._sync_count()
+        elif action is clear_action:
+            self.link_list.clear()
+            self._sync_count()
+            self.status_text.setText("Queue cleared")
 
     def resolve_links(self) -> None:
         links = self.links()

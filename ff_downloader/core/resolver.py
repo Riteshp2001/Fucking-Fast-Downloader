@@ -6,23 +6,15 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from urllib.parse import urlparse
 
+import requests
 from bs4 import BeautifulSoup
-from curl_cffi import requests
-from curl_cffi.requests.exceptions import RequestException
+from requests.exceptions import RequestException
 
-from ff_downloader.config import (
-    BASE_HEADERS,
-    BETWEEN_LINK_DELAY,
-    DEFAULT_TIMEOUT,
-    RESOLVE_RETRIES,
-    RESOLVE_RETRY_DELAY,
-)
+from ff_downloader.config import BETWEEN_LINK_DELAY, DEFAULT_TIMEOUT
+from ff_downloader.core.browser_resolver import HeadlessBrowserResolver
+from ff_downloader.core.errors import ResolutionError
 
 LogFn = Callable[[str], None]
-
-
-class ResolutionError(RuntimeError):
-    pass
 
 
 @dataclass(frozen=True)
@@ -32,10 +24,12 @@ class ResolvedLink:
 
 
 class FuckingFastResolver:
-    """Resolve public FuckingFast share URLs through the site's HTMX flow."""
+    """Resolve public FuckingFast share URLs through the site's HTMX flow,
+    using a headless Chrome session to pass Cloudflare / Turnstile."""
 
     def __init__(self, log: LogFn | None = None):
         self.log = log or (lambda _message: None)
+        self._browser = HeadlessBrowserResolver(self.log)
 
     @staticmethod
     def _file_id(link: str) -> str:
@@ -54,12 +48,7 @@ class FuckingFastResolver:
     def extract_fitgirl_links(self, url: str) -> list[str]:
         self.log("Scanning page for FuckingFast links…")
         try:
-            response = requests.get(
-                url,
-                headers=BASE_HEADERS,
-                impersonate="chrome",
-                timeout=DEFAULT_TIMEOUT,
-            )
+            response = requests.get(url, headers={"user-agent": "Mozilla/5.0"}, timeout=DEFAULT_TIMEOUT)
             response.raise_for_status()
         except RequestException as exc:
             raise ResolutionError(f"Could not read source page: {exc}") from exc
@@ -80,7 +69,7 @@ class FuckingFastResolver:
             link = raw.strip().strip('"').strip("'")
             if not link:
                 continue
-            if "fitgirl-repacks.site" in link:
+            if urlparse(link).netloc in {"fitgirl-repacks.site", "www.fitgirl-repacks.site"}:
                 expanded.extend(self.extract_fitgirl_links(link))
             else:
                 expanded.append(link)
@@ -90,69 +79,8 @@ class FuckingFastResolver:
         link = link.strip()
         if "dl.fuckingfast.co" in link:
             return link
-
-        file_id = self._file_id(link)
-        clean_url = f"https://fuckingfast.co/{file_id}"
-        post_url = f"https://fuckingfast.co/f/{file_id}/go"
-        last_error: RequestException | ResolutionError | None = None
-
-        for attempt in range(1, RESOLVE_RETRIES + 1):
-            try:
-                with requests.Session(impersonate="chrome") as session:
-                    get_headers = {
-                        "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-                        "accept-language": "en-US,en;q=0.9",
-                        "sec-fetch-dest": "document",
-                        "sec-fetch-mode": "navigate",
-                        "sec-fetch-site": "none",
-                        "sec-fetch-user": "?1",
-                        "upgrade-insecure-requests": "1",
-                    }
-                    self.log(f"Opening share page ({attempt}/{RESOLVE_RETRIES})…")
-                    warmup = session.get(clean_url, headers=get_headers, timeout=DEFAULT_TIMEOUT)
-                    if warmup.status_code != 200:
-                        raise ResolutionError(f"Share page returned HTTP {warmup.status_code}")
-
-                    time.sleep(1.25)
-                    post_headers = {
-                        "accept": "*/*",
-                        "accept-language": "en-US,en;q=0.9",
-                        "cache-control": "no-cache",
-                        "content-type": "application/x-www-form-urlencoded",
-                        "hx-current-url": clean_url,
-                        "hx-request": "true",
-                        "origin": "https://fuckingfast.co",
-                        "pragma": "no-cache",
-                        "referer": clean_url,
-                        "sec-fetch-dest": "empty",
-                        "sec-fetch-mode": "cors",
-                        "sec-fetch-site": "same-origin",
-                    }
-                    result = session.post(
-                        post_url,
-                        headers=post_headers,
-                        timeout=DEFAULT_TIMEOUT,
-                        allow_redirects=False,
-                    )
-                    if result.status_code == 403:
-                        raise ResolutionError("HTMX request was rejected with HTTP 403")
-                    if result.status_code == 429:
-                        raise ResolutionError("Rate limited with HTTP 429")
-                    if result.status_code >= 400:
-                        raise ResolutionError(f"HTMX request returned HTTP {result.status_code}")
-
-                    direct = result.headers.get("hx-redirect") or result.headers.get("location")
-                    if not direct:
-                        raise ResolutionError("HTMX response did not provide a download redirect")
-                    return direct
-            except (RequestException, ResolutionError) as exc:
-                last_error = exc
-                if attempt >= RESOLVE_RETRIES:
-                    break
-                self.log(f"Resolver retry: {exc}")
-                time.sleep(RESOLVE_RETRY_DELAY)
-
-        raise ResolutionError(str(last_error or "Could not resolve link"))
+        self._file_id(link)
+        return self._browser.resolve(link)
 
     def resolve_many(self, links: Iterable[str]) -> list[ResolvedLink]:
         expanded = self.expand_sources(links)
@@ -162,3 +90,6 @@ class FuckingFastResolver:
             if index + 1 < len(expanded):
                 time.sleep(BETWEEN_LINK_DELAY)
         return output
+
+    def close(self) -> None:
+        self._browser.close()

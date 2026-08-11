@@ -47,6 +47,16 @@ class SolarIconFactory:
             line(.4,.48,.6,.48)
         elif name == "activity":
             line(.12,.55,.3,.55); line(.3,.55,.4,.32); line(.4,.32,.55,.7); line(.55,.7,.68,.45); line(.68,.45,.88,.45)
+        elif name == "minimize":
+            line(.3,.75,.7,.75)
+        elif name == "maximize":
+            painter.drawRoundedRect(QtCore.QRectF(.28*s,.26*s,.44*s,.44*s), .06*s,.06*s)
+        elif name == "restore":
+            painter.drawRoundedRect(QtCore.QRectF(.26*s,.38*s,.46*s,.38*s), .06*s,.06*s)
+            painter.drawRoundedRect(QtCore.QRectF(.28*s,.22*s,.46*s,.38*s), .06*s,.06*s)
+            line(.54,.6,.54,.6)
+        elif name == "close":
+            line(.3,.3,.7,.7); line(.7,.3,.3,.7)
         else:
             painter.drawEllipse(QtCore.QRectF(.22*s,.22*s,.56*s,.56*s))
         painter.end()
