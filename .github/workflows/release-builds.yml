@@ -14,6 +14,7 @@ on:
       - "requirements-dev.txt"
       - "pyproject.toml"
       - "ff_downloader/**"
+      - "tests/**"
       - "main.py"
   workflow_dispatch:
 
