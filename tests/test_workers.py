@@ -1,0 +1,58 @@
+from __future__ import annotations
+
+from PyQt5 import QtCore
+
+from ff_downloader.workers import (
+    DownloadWorker,
+    ResolveWorker,
+    _clear_cached_resolution,
+    _remember_resolution,
+)
+
+
+def test_download_worker_reuses_only_exact_cached_resolution_batch(tmp_path) -> None:
+    source_links = ["https://fitgirl-repacks.site/example/"]
+    pairs = [
+        ("https://fuckingfast.co/part-1", "https://dl.fuckingfast.co/direct-1"),
+        ("https://fuckingfast.co/part-2", "https://dl.fuckingfast.co/direct-2"),
+    ]
+    _remember_resolution(source_links, pairs)
+
+    matched = DownloadWorker(source_links, tmp_path)
+    unmatched = DownloadWorker(["https://fitgirl-repacks.site/another/"], tmp_path)
+
+    assert matched.resolved_urls == dict(pairs)
+    assert unmatched.resolved_urls == {}
+    _clear_cached_resolution(source_links)
+
+
+class _ResolveParent(QtCore.QObject):
+    def __init__(self, links: list[str]):
+        super().__init__()
+        self.links = links
+        self.resolve_calls = 0
+
+    def source_links(self) -> list[str]:
+        return self.links
+
+    def resolve_links(self) -> None:
+        self.resolve_calls += 1
+
+
+def test_finished_resolver_requests_latest_sources_when_input_changed() -> None:
+    parent = _ResolveParent(["https://fuckingfast.co/new"])
+    worker = ResolveWorker(["https://fuckingfast.co/old"], parent)
+
+    worker._resolve_latest_parent_sources()
+
+    assert parent.resolve_calls == 1
+
+
+def test_finished_resolver_does_not_repeat_unchanged_sources() -> None:
+    links = ["https://fuckingfast.co/same"]
+    parent = _ResolveParent(links)
+    worker = ResolveWorker(links, parent)
+
+    worker._resolve_latest_parent_sources()
+
+    assert parent.resolve_calls == 0
