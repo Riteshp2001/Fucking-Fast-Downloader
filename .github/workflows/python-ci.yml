@@ -4,17 +4,108 @@ on:
   push:
     branches: [main]
   pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: python-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  test:
-    runs-on: ubuntu-latest
+  quality:
+    name: Quality checks
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip
-      - run: pip install -r requirements-dev.txt
-      - run: ruff check ff_downloader tests main.py
-      - run: pytest -q
-      - run: python -m compileall -q ff_downloader main.py
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-dev.txt
+          python -m pip check
+
+      - name: Ruff
+        run: python -m ruff check ff_downloader tests scripts main.py
+
+      - name: Compile Python sources
+        run: python -m compileall -q ff_downloader tests scripts main.py
+
+  tests:
+    name: Tests (${{ matrix.os }}, Python ${{ matrix.python }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            python: "3.10"
+          - os: ubuntu-24.04
+            python: "3.12"
+          - os: ubuntu-24.04
+            python: "3.13"
+          - os: windows-2025
+            python: "3.12"
+          - os: macos-15
+            python: "3.12"
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-dev.txt
+          python -m pip check
+
+      - name: Run tests
+        run: python -m pytest -q
+
+      - name: Import smoke test
+        run: python -c "from ff_downloader.core import DownloadEngine, FuckingFastResolver; from ff_downloader.ui import MainWindow; print(DownloadEngine.__name__, FuckingFastResolver.__name__, MainWindow.__name__)"
+
+  gui-smoke:
+    name: Headless GUI smoke test
+    runs-on: ubuntu-24.04
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install runtime dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip check
+
+      - name: Create and close main window
+        run: python -c "from PyQt5 import QtWidgets; from ff_downloader.ui import MainWindow; app = QtWidgets.QApplication([]); window = MainWindow(); window.close(); app.quit(); print('GUI smoke test passed')"

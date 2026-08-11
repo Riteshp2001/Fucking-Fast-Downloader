@@ -1,6 +1,3 @@
 PyQt5>=5.15.10
 curl_cffi>=0.13.0
 beautifulsoup4>=4.12.3
-
-# Optional packaging
-pyinstaller>=6.0
