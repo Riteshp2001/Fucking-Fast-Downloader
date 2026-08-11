@@ -4,6 +4,15 @@ on:
   push:
     tags:
       - "v*.*.*"
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/release-builds.yml"
+      - "scripts/build_release.py"
+      - "requirements.txt"
+      - "requirements-dev.txt"
+      - "pyproject.toml"
+      - "main.py"
   workflow_dispatch:
 
 permissions:
