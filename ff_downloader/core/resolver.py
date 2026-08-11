@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import re
 import time
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
-from typing import Callable, Iterable
 from urllib.parse import urlparse
 
 from bs4 import BeautifulSoup
 from curl_cffi import requests
+from curl_cffi.requests.exceptions import RequestException
 
 from ff_downloader.config import (
     BASE_HEADERS,
@@ -60,7 +61,7 @@ class FuckingFastResolver:
                 timeout=DEFAULT_TIMEOUT,
             )
             response.raise_for_status()
-        except Exception as exc:
+        except RequestException as exc:
             raise ResolutionError(f"Could not read source page: {exc}") from exc
 
         soup = BeautifulSoup(response.text, "html.parser")
@@ -93,7 +94,7 @@ class FuckingFastResolver:
         file_id = self._file_id(link)
         clean_url = f"https://fuckingfast.co/{file_id}"
         post_url = f"https://fuckingfast.co/f/{file_id}/go"
-        last_error: Exception | None = None
+        last_error: RequestException | ResolutionError | None = None
 
         for attempt in range(1, RESOLVE_RETRIES + 1):
             try:
@@ -144,7 +145,7 @@ class FuckingFastResolver:
                     if not direct:
                         raise ResolutionError("HTMX response did not provide a download redirect")
                     return direct
-            except Exception as exc:
+            except (RequestException, ResolutionError) as exc:
                 last_error = exc
                 if attempt >= RESOLVE_RETRIES:
                     break
