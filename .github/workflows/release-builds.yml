@@ -13,7 +13,7 @@ on:
       - "requirements.txt"
       - "requirements-dev.txt"
       - "pyproject.toml"
-      - "ff_downloader/config.py"
+      - "ff_downloader/**"
       - "main.py"
   workflow_dispatch:
 
@@ -54,6 +54,7 @@ jobs:
         run: |
           python - <<'PY'
           import os
+          import re
           import tomllib
           from pathlib import Path
 
@@ -75,10 +76,14 @@ jobs:
 
           pr_head = os.environ.get("PR_HEAD", "")
           if pr_head.startswith("release/v"):
-              branch_version = pr_head.removeprefix("release/v")
+              match = re.fullmatch(r"release/v(\d+\.\d+\.\d+)(?:[-/].+)?", pr_head)
+              if not match:
+                  raise SystemExit(f"Invalid release branch name: {pr_head}")
+              branch_version = match.group(1)
               if branch_version != APP_VERSION:
                   raise SystemExit(
-                      f"Release branch {pr_head} does not match APP_VERSION {APP_VERSION}"
+                      f"Release branch {pr_head} targets {branch_version}, "
+                      f"but APP_VERSION is {APP_VERSION}"
                   )
 
           print(f"Release version verified: {APP_VERSION}")
@@ -132,10 +137,15 @@ jobs:
           python -m pip install -r requirements-dev.txt
           python -m pip check
 
-      - name: Build packaged application
+      - name: Install Inno Setup
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: choco install innosetup --no-progress -y
+
+      - name: Build portable app and native installer
         run: python scripts/build_release.py --output release
 
-      - name: Upload packaged artifact
+      - name: Upload packaged artifacts
         uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.artifact }}
@@ -158,6 +168,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - name: Download packaged artifacts
         uses: actions/download-artifact@v7
@@ -181,6 +193,19 @@ jobs:
           fi
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
+      - name: Verify release source matches existing tag
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          git fetch --force --tags
+          if git show-ref --tags --verify --quiet "refs/tags/${RELEASE_TAG}"; then
+            tag_sha=$(git rev-list -n 1 "$RELEASE_TAG")
+            if [[ "$tag_sha" != "$GITHUB_SHA" ]]; then
+              echo "::error::${RELEASE_TAG} already points to ${tag_sha}; refusing to publish binaries built from ${GITHUB_SHA}."
+              exit 1
+            fi
+          fi
+
       - name: Publish release assets
         env:
           GH_TOKEN: ${{ github.token }}
@@ -189,7 +214,7 @@ jobs:
           title="Fucking Fast Downloader ${RELEASE_TAG}"
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" release-assets/* --clobber
-          elif [[ "$GITHUB_REF" == refs/tags/* ]]; then
+          elif git show-ref --tags --verify --quiet "refs/tags/${RELEASE_TAG}"; then
             gh release create "$RELEASE_TAG" release-assets/* \
               --generate-notes \
               --verify-tag \
