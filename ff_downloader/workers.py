@@ -43,10 +43,18 @@ class DownloadWorker(QtCore.QThread):
     failed = QtCore.pyqtSignal(str, str)
     all_done = QtCore.pyqtSignal()
 
-    def __init__(self, links: list[str], directory: Path = DOWNLOADS_DIR, parent=None):
+    def __init__(
+        self,
+        links: list[str],
+        directory: Path = DOWNLOADS_DIR,
+        parent=None,
+        *,
+        resolved_urls: dict[str, str] | None = None,
+    ):
         super().__init__(parent)
         self.links = links
         self.directory = directory
+        self.resolved_urls = resolved_urls or {}
         self.resolver: FuckingFastResolver | None = None
         self.engine: DownloadEngine | None = None
 
@@ -69,7 +77,7 @@ class DownloadWorker(QtCore.QThread):
             expanded = self.resolver.expand_sources(self.links)
             for index, source in enumerate(expanded):
                 try:
-                    direct = self.resolver.resolve(source)
+                    direct = self.resolved_urls.get(source) or self.resolver.resolve(source)
                     filename = self.engine.filename_from_link(source) or self.engine.filename_from_url(direct)
                     self.current_file.emit(filename)
                     self.log.emit(f"Downloading {filename}")
