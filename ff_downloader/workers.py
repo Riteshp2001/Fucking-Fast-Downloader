@@ -74,7 +74,11 @@ class DownloadWorker(QtCore.QThread):
         self.resolver = FuckingFastResolver(self.log.emit)
         self.engine = DownloadEngine(self.progress.emit, self.log.emit)
         try:
-            expanded = self.resolver.expand_sources(self.links)
+            expanded = (
+                list(self.resolved_urls)
+                if self.resolved_urls
+                else self.resolver.expand_sources(self.links)
+            )
             for index, source in enumerate(expanded):
                 try:
                     direct = self.resolved_urls.get(source) or self.resolver.resolve(source)
