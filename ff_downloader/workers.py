@@ -3,10 +3,16 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
+from curl_cffi.requests.exceptions import RequestException
 from PyQt5 import QtCore
 
 from ff_downloader.config import BETWEEN_LINK_DELAY, DOWNLOADS_DIR
-from ff_downloader.core import DownloadEngine, FuckingFastResolver
+from ff_downloader.core import (
+    DownloadCancelled,
+    DownloadEngine,
+    FuckingFastResolver,
+    ResolutionError,
+)
 
 
 class ResolveWorker(QtCore.QThread):
@@ -23,7 +29,7 @@ class ResolveWorker(QtCore.QThread):
         try:
             results = resolver.resolve_many(self.links)
             self.resolved.emit([item.direct_url for item in results])
-        except Exception as exc:
+        except ResolutionError as exc:
             self.failed.emit(str(exc))
 
 
@@ -68,9 +74,14 @@ class DownloadWorker(QtCore.QThread):
                     self.engine.download(direct, self.directory / filename)
                     self.item_done.emit(source)
                     self.log.emit(f"Finished {filename}")
-                except Exception as exc:
+                except DownloadCancelled:
+                    self.log.emit("Download cancelled")
+                    break
+                except (ResolutionError, RequestException, OSError, RuntimeError) as exc:
                     self.failed.emit(source, str(exc))
                 if index + 1 < len(expanded):
                     time.sleep(BETWEEN_LINK_DELAY)
+        except ResolutionError as exc:
+            self.failed.emit("", str(exc))
         finally:
             self.all_done.emit()
