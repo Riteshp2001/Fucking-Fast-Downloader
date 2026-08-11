@@ -14,6 +14,28 @@ from ff_downloader.core import (
     ResolutionError,
 )
 
+_LAST_RESOLVED_INPUTS: tuple[str, ...] = ()
+_LAST_RESOLVED_URLS: dict[str, str] = {}
+
+
+def _clear_cached_resolution(links: list[str]) -> None:
+    global _LAST_RESOLVED_INPUTS, _LAST_RESOLVED_URLS
+    if _LAST_RESOLVED_INPUTS == tuple(links):
+        _LAST_RESOLVED_INPUTS = ()
+        _LAST_RESOLVED_URLS = {}
+
+
+def _remember_resolution(links: list[str], pairs: list[tuple[str, str]]) -> None:
+    global _LAST_RESOLVED_INPUTS, _LAST_RESOLVED_URLS
+    _LAST_RESOLVED_INPUTS = tuple(links)
+    _LAST_RESOLVED_URLS = dict(pairs)
+
+
+def _cached_resolution(links: list[str]) -> dict[str, str]:
+    if _LAST_RESOLVED_INPUTS != tuple(links):
+        return {}
+    return dict(_LAST_RESOLVED_URLS)
+
 
 class ResolveWorker(QtCore.QThread):
     log = QtCore.pyqtSignal(str)
@@ -23,12 +45,27 @@ class ResolveWorker(QtCore.QThread):
     def __init__(self, links: list[str], parent=None):
         super().__init__(parent)
         self.links = links
+        self.finished.connect(self._resolve_latest_parent_sources)
+
+    @QtCore.pyqtSlot()
+    def _resolve_latest_parent_sources(self) -> None:
+        parent = self.parent()
+        source_links = getattr(parent, "source_links", None)
+        resolve_links = getattr(parent, "resolve_links", None)
+        if not callable(source_links) or not callable(resolve_links):
+            return
+        current_links = source_links()
+        if current_links and current_links != self.links:
+            resolve_links()
 
     def run(self) -> None:
         resolver = FuckingFastResolver(self.log.emit)
+        _clear_cached_resolution(self.links)
         try:
             results = resolver.resolve_many(self.links)
-            self.resolved.emit([(item.source_url, item.direct_url) for item in results])
+            pairs = [(item.source_url, item.direct_url) for item in results]
+            _remember_resolution(self.links, pairs)
+            self.resolved.emit(pairs)
         except ResolutionError as exc:
             self.failed.emit(str(exc))
         finally:
@@ -54,7 +91,7 @@ class DownloadWorker(QtCore.QThread):
         super().__init__(parent)
         self.links = links
         self.directory = directory
-        self.resolved_urls = resolved_urls or {}
+        self.resolved_urls = resolved_urls or _cached_resolution(links)
         self.resolver: FuckingFastResolver | None = None
         self.engine: DownloadEngine | None = None
 
