@@ -6,12 +6,14 @@ on:
       - "v*.*.*"
   pull_request:
     branches: [main]
+    types: [opened, synchronize, reopened, closed]
     paths:
       - ".github/workflows/release-builds.yml"
       - "scripts/build_release.py"
       - "requirements.txt"
       - "requirements-dev.txt"
       - "pyproject.toml"
+      - "ff_downloader/config.py"
       - "main.py"
   workflow_dispatch:
 
@@ -19,12 +21,13 @@ permissions:
   contents: read
 
 concurrency:
-  group: release-build-${{ github.ref }}
+  group: release-build-${{ github.ref }}-${{ github.event.action || 'run' }}
   cancel-in-progress: false
 
 jobs:
   validate:
     name: Validate release source
+    if: github.event_name != 'pull_request' || github.event.action != 'closed' || github.event.pull_request.merged == true
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
@@ -45,9 +48,41 @@ jobs:
           python -m pip install -r requirements-dev.txt
           python -m pip check
 
-      - name: Verify tag matches application version
-        if: startsWith(github.ref, 'refs/tags/')
-        run: python -c "import os; from ff_downloader.config import APP_VERSION; tag = os.environ['GITHUB_REF_NAME'].removeprefix('v'); raise SystemExit(0 if tag == APP_VERSION else f'Tag v{tag} does not match APP_VERSION {APP_VERSION}')"
+      - name: Verify release version consistency
+        env:
+          PR_HEAD: ${{ github.event.pull_request.head.ref || '' }}
+        run: |
+          python - <<'PY'
+          import os
+          import tomllib
+          from pathlib import Path
+
+          from ff_downloader.config import APP_VERSION
+
+          project_version = tomllib.loads(Path("pyproject.toml").read_text())["project"]["version"]
+          if project_version != APP_VERSION:
+              raise SystemExit(
+                  f"pyproject.toml version {project_version} does not match APP_VERSION {APP_VERSION}"
+              )
+
+          ref = os.environ.get("GITHUB_REF", "")
+          if ref.startswith("refs/tags/"):
+              tag_version = os.environ["GITHUB_REF_NAME"].removeprefix("v")
+              if tag_version != APP_VERSION:
+                  raise SystemExit(
+                      f"Tag v{tag_version} does not match APP_VERSION {APP_VERSION}"
+                  )
+
+          pr_head = os.environ.get("PR_HEAD", "")
+          if pr_head.startswith("release/v"):
+              branch_version = pr_head.removeprefix("release/v")
+              if branch_version != APP_VERSION:
+                  raise SystemExit(
+                      f"Release branch {pr_head} does not match APP_VERSION {APP_VERSION}"
+                  )
+
+          print(f"Release version verified: {APP_VERSION}")
+          PY
 
       - name: Lint
         run: python -m ruff check ff_downloader tests scripts main.py
@@ -110,12 +145,20 @@ jobs:
 
   publish:
     name: Publish GitHub release
-    if: startsWith(github.ref, 'refs/tags/')
+    if: >-
+      startsWith(github.ref, 'refs/tags/') ||
+      (github.event_name == 'pull_request' &&
+       github.event.action == 'closed' &&
+       github.event.pull_request.merged == true &&
+       startsWith(github.event.pull_request.head.ref, 'release/v'))
     needs: build
     runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
       - name: Download packaged artifacts
         uses: actions/download-artifact@v7
         with:
@@ -127,12 +170,33 @@ jobs:
         working-directory: release-assets
         run: sha256sum * > SHA256SUMS.txt
 
+      - name: Resolve release tag
+        id: release
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            tag="$GITHUB_REF_NAME"
+          else
+            version=$(python -c "import runpy; print(runpy.run_path('ff_downloader/config.py')['APP_VERSION'])")
+            tag="v${version}"
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
       - name: Publish release assets
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
         run: |
-          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" release-assets/* --clobber
+          title="Fucking Fast Downloader ${RELEASE_TAG}"
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" release-assets/* --clobber
+          elif [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            gh release create "$RELEASE_TAG" release-assets/* \
+              --generate-notes \
+              --verify-tag \
+              --title "$title"
           else
-            gh release create "$GITHUB_REF_NAME" release-assets/* --generate-notes --verify-tag
+            gh release create "$RELEASE_TAG" release-assets/* \
+              --generate-notes \
+              --target "$GITHUB_SHA" \
+              --title "$title"
           fi
