@@ -1,7 +1,7 @@
 from pathlib import Path
 
 APP_NAME = "Fucking Fast Downloader"
-APP_VERSION = "2.0.0"
+APP_VERSION = "2.0.2"
 DOWNLOADS_DIR = Path.home() / "Downloads" / "Fucking Fast Downloader"
 DOWNLOADS_DIR.mkdir(parents=True, exist_ok=True)
 
