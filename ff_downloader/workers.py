@@ -28,7 +28,7 @@ class ResolveWorker(QtCore.QThread):
         resolver = FuckingFastResolver(self.log.emit)
         try:
             results = resolver.resolve_many(self.links)
-            self.resolved.emit([item.direct_url for item in results])
+            self.resolved.emit([(item.source_url, item.direct_url) for item in results])
         except ResolutionError as exc:
             self.failed.emit(str(exc))
         finally:
