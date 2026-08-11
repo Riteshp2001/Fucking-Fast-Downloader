@@ -1,143 +1,133 @@
 from __future__ import annotations
 
-from PyQt5 import QtCore, QtGui
+from functools import lru_cache
+
+from PyQt5 import QtCore, QtGui, QtSvg
 
 
 class SolarIconFactory:
-    """Small Solar-style outline icon renderer built from vector primitives."""
+    """Render a small embedded subset of the real Solar linear icon set.
 
-    @staticmethod
-    def icon(name: str, color: str = "#D8DEE9", size: int = 20) -> QtGui.QIcon:
+    Solar Icons are designed by 480 Design and distributed under CC BY 4.0.
+    The SVG path data below comes from the Solar collection published by Iconify.
+    Embedding only the glyphs used by the UI keeps packaged builds lightweight.
+    """
+
+    _BODIES = {
+        "download": (
+            '<g fill="none" stroke="currentColor" stroke-linecap="round" '
+            'stroke-linejoin="round" stroke-width="1.5"><path d="M3 15c0 2.828 0 '
+            '4.243.879 5.121C4.757 21 6.172 21 9 21h6c2.828 0 4.243 0 '
+            '5.121-.879C21 19.243 21 17.828 21 15"/><path d="M12 3v13m-4-4.375L12 '
+            '16l4-4.375"/></g>'
+        ),
+        "paste": (
+            '<g fill="none" stroke="currentColor" stroke-width="1.5"><path d="M16 '
+            '4.002c2.175.012 3.353.109 4.121.877C21 5.758 21 7.172 21 10v6c0 '
+            '2.829 0 4.243-.879 5.122C19.243 22 17.828 22 15 22H9c-2.828 0-4.243 '
+            '0-5.121-.878C3 20.242 3 18.829 3 16v-6c0-2.828 0-4.242.879-5.121.768'
+            '-.768 1.946-.865 4.121-.877"/><path stroke-linecap="round" d="M7 14.5h8M7 '
+            '18h5.5"/><path d="M8 3.5A1.5 1.5 0 0 1 9.5 2h5A1.5 1.5 0 0 1 16 '
+            '3.5v1A1.5 1.5 0 0 1 14.5 6h-5A1.5 1.5 0 0 1 8 4.5z"/></g>'
+        ),
+        "copy": (
+            '<g fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 '
+            '11c0-2.828 0-4.243.879-5.121C7.757 5 9.172 5 12 5h3c2.828 0 4.243 0 '
+            '5.121.879C21 6.757 21 8.172 21 11v5c0 2.828 0 4.243-.879 5.121C19.243 '
+            '22 17.828 22 15 22h-3c-2.828 0-4.243 0-5.121-.879C6 20.243 6 18.828 '
+            '6 16z"/><path d="M6 19a3 3 0 0 1-3-3v-6c0-3.771 0-5.657 1.172-6.828S7.229 '
+            '2 11 2h4a3 3 0 0 1 3 3"/></g>'
+        ),
+        "folder": (
+            '<g fill="none" stroke="currentColor" stroke-width="1.5"><path '
+            'stroke-linecap="round" d="M18 10h-5"/><path d="M2 6.95c0-.883 0-1.324.07-1.692A4 '
+            '4 0 0 1 5.257 2.07C5.626 2 6.068 2 6.95 2c.386 0 .58 0 .766.017a4 4 0 '
+            '0 1 2.18.904c.144.119.28.255.554.529L11 4c.816.816 1.224 1.224 1.712 '
+            '1.495a4 4 0 0 0 .848.352C14.098 6 14.675 6 15.828 6h.374c2.632 0 '
+            '3.949 0 4.804.77q.119.105.224.224c.77.855.77 2.172.77 4.804V14c0 3.771 '
+            '0 5.657-1.172 6.828S17.771 22 14 22h-4c-3.771 0-5.657 0-6.828-1.172S2 '
+            '17.771 2 14z"/></g>'
+        ),
+        "pause": (
+            '<path fill="none" stroke="currentColor" stroke-width="1.5" d="M2 '
+            '6c0-1.886 0-2.828.586-3.414S4.114 2 6 2s2.828 0 3.414.586S10 4.114 10 '
+            '6v12c0 1.886 0 2.828-.586 3.414S7.886 22 6 22s-2.828 0-3.414-.586S2 '
+            '19.886 2 18zm12 0c0-1.886 0-2.828.586-3.414S16.114 2 18 2s2.828 0 '
+            '3.414.586S22 4.114 22 6v12c0 1.886 0 2.828-.586 3.414S19.886 22 18 '
+            '22s-2.828 0-3.414-.586S14 19.886 14 18z"/>'
+        ),
+        "play": (
+            '<path fill="none" stroke="currentColor" stroke-width="1.5" '
+            'd="M20.409 9.353a2.998 2.998 0 0 1 0 5.294L7.597 21.614C5.534 22.737 3 '
+            '21.277 3 18.968V5.033c0-2.31 2.534-3.769 4.597-2.648z"/>'
+        ),
+        "stop": (
+            '<path fill="none" stroke="currentColor" stroke-width="1.5" d="M2 '
+            '12c0-4.714 0-7.071 1.464-8.536C4.93 2 7.286 2 12 2s7.071 0 8.535 '
+            '1.464C22 4.93 22 7.286 22 12s0 7.071-1.465 8.535C19.072 22 16.714 22 '
+            '12 22s-7.071 0-8.536-1.465C2 19.072 2 16.714 2 12Z"/>'
+        ),
+        "link": (
+            '<g fill="none" stroke="currentColor" stroke-linecap="round" '
+            'stroke-width="1.5"><path d="m12.792 15.8 1.43-1.432a6.076 6.076 0 0 0 '
+            '0-8.59 6.067 6.067 0 0 0-8.583 0L2.778 8.643A6.076 6.076 0 0 0 6.732 '
+            '19"/><path d="m11.208 8.2-1.43 1.432a6.076 6.076 0 0 0 0 8.59 6.067 6.067 '
+            '0 0 0 8.583 0l2.861-2.864A6.076 6.076 0 0 0 17.268 5"/></g>'
+        ),
+        "document": (
+            '<g fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 '
+            '10c0-3.771 0-5.657 1.172-6.828S7.229 2 11 2h2c3.771 0 5.657 0 6.828 '
+            '1.172S21 6.229 21 10v4c0 3.771 0 5.657-1.172 6.828S16.771 22 13 22h-2c'
+            '-3.771 0-5.657 0-6.828-1.172S3 17.771 3 14z"/><path stroke-linecap="round" '
+            'd="M8 12h8M8 8h8m-8 8h5"/></g>'
+        ),
+        "sun": (
+            '<g fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" '
+            'cy="12" r="5"/><path stroke-linecap="round" d="M12 2v2m0 16v2M4 12H2m20 '
+            '0h-2m-.222-7.777-2.222 2.031M4.222 4.223l2.222 2.031m0 11.302-2.222 '
+            '2.222m15.556-.001-2.222-2.222"/></g>'
+        ),
+        "moon": (
+            '<path fill="none" stroke="currentColor" stroke-linejoin="round" '
+            'stroke-width="1.5" d="M12 22c5.523 0 10-4.477 10-10 0-.463-.694-.54-.933-.143a6.5 '
+            '6.5 0 1 1-8.924-8.924C12.54 2.693 12.463 2 12 2 6.477 2 2 6.477 2 '
+            '12s4.477 10 10 10Z"/>'
+        ),
+        "maximize": (
+            '<g fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 '
+            '12c0-4.714 0-7.071 1.464-8.536C4.93 2 7.286 2 12 2s7.071 0 8.535 '
+            '1.464C22 4.93 22 7.286 22 12s0 7.071-1.465 8.535C19.072 22 16.714 22 '
+            '12 22s-7.071 0-8.536-1.465C2 19.072 2 16.714 2 12Z"/><path '
+            'stroke-linecap="round" stroke-linejoin="round" d="M17 10V7h-3m3 0-3.5 '
+            '3.5M7 14v3h3m-3 0 3.5-3.5"/></g>'
+        ),
+        "restore": (
+            '<g fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 '
+            '12c0-4.714 0-7.071 1.464-8.536C4.93 2 7.286 2 12 2s7.071 0 8.535 '
+            '1.464C22 4.93 22 7.286 22 12s0 7.071-1.465 8.535C19.072 22 16.714 22 '
+            '12 22s-7.071 0-8.536-1.465C2 19.072 2 16.714 2 12Z"/><path '
+            'stroke-linecap="round" stroke-linejoin="round" d="M10.5 16.5v-3h-3m3 0L7 '
+            '17m6.5-9.5v3h3m-3 0L17 7"/></g>'
+        ),
+        "close": (
+            '<g fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" '
+            'cy="12" r="10"/><path stroke-linecap="round" d="m14.5 9.5-5 5m0-5 5 '
+            '5"/></g>'
+        ),
+    }
+
+    @classmethod
+    @lru_cache(maxsize=128)
+    def icon(cls, name: str, color: str = "#D8DEE9", size: int = 20) -> QtGui.QIcon:
+        body = cls._BODIES.get(name, cls._BODIES["link"])
+        svg = (
+            '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" '
+            f'viewBox="0 0 24 24">{body.replace("currentColor", color)}</svg>'
+        )
+        renderer = QtSvg.QSvgRenderer(QtCore.QByteArray(svg.encode("utf-8")))
         pixmap = QtGui.QPixmap(size, size)
         pixmap.fill(QtCore.Qt.transparent)
         painter = QtGui.QPainter(pixmap)
-        painter.setRenderHint(QtGui.QPainter.Antialiasing)
-        pen = QtGui.QPen(
-            QtGui.QColor(color),
-            max(1.6, size / 12),
-            QtCore.Qt.SolidLine,
-            QtCore.Qt.RoundCap,
-            QtCore.Qt.RoundJoin,
-        )
-        painter.setPen(pen)
-        painter.setBrush(QtCore.Qt.NoBrush)
-        s = float(size)
-
-        def line(x1: float, y1: float, x2: float, y2: float) -> None:
-            painter.drawLine(
-                QtCore.QPointF(x1 * s, y1 * s),
-                QtCore.QPointF(x2 * s, y2 * s),
-            )
-
-        if name == "paste":
-            painter.drawRoundedRect(QtCore.QRectF(0.25 * s, 0.22 * s, 0.5 * s, 0.6 * s), 0.1 * s, 0.1 * s)
-            painter.drawRoundedRect(
-                QtCore.QRectF(0.37 * s, 0.11 * s, 0.26 * s, 0.18 * s),
-                0.06 * s,
-                0.06 * s,
-            )
-            line(0.36, 0.48, 0.64, 0.48)
-            line(0.36, 0.62, 0.58, 0.62)
-        elif name == "shield":
-            path = QtGui.QPainterPath(QtCore.QPointF(0.5 * s, 0.1 * s))
-            path.lineTo(0.78 * s, 0.22 * s)
-            path.lineTo(0.74 * s, 0.58 * s)
-            path.quadTo(0.68 * s, 0.79 * s, 0.5 * s, 0.9 * s)
-            path.quadTo(0.32 * s, 0.79 * s, 0.26 * s, 0.58 * s)
-            path.lineTo(0.22 * s, 0.22 * s)
-            path.closeSubpath()
-            painter.drawPath(path)
-            line(0.37, 0.5, 0.47, 0.61)
-            line(0.47, 0.61, 0.66, 0.4)
-        elif name == "spark":
-            line(0.50, 0.12, 0.50, 0.30)
-            line(0.50, 0.70, 0.50, 0.88)
-            line(0.12, 0.50, 0.30, 0.50)
-            line(0.70, 0.50, 0.88, 0.50)
-            line(0.23, 0.23, 0.35, 0.35)
-            line(0.65, 0.65, 0.77, 0.77)
-            line(0.77, 0.23, 0.65, 0.35)
-            line(0.35, 0.65, 0.23, 0.77)
-            painter.drawEllipse(QtCore.QRectF(0.39 * s, 0.39 * s, 0.22 * s, 0.22 * s))
-        elif name == "copy":
-            painter.drawRoundedRect(QtCore.QRectF(0.3 * s, 0.28 * s, 0.48 * s, 0.5 * s), 0.09 * s, 0.09 * s)
-            painter.drawRoundedRect(QtCore.QRectF(0.18 * s, 0.16 * s, 0.48 * s, 0.5 * s), 0.09 * s, 0.09 * s)
-        elif name == "download":
-            line(0.5, 0.15, 0.5, 0.6)
-            line(0.32, 0.44, 0.5, 0.62)
-            line(0.68, 0.44, 0.5, 0.62)
-            painter.drawRoundedRect(QtCore.QRectF(0.2 * s, 0.67 * s, 0.6 * s, 0.18 * s), 0.08 * s, 0.08 * s)
-        elif name == "folder":
-            path = QtGui.QPainterPath(QtCore.QPointF(0.15 * s, 0.3 * s))
-            path.lineTo(0.37 * s, 0.3 * s)
-            path.lineTo(0.45 * s, 0.2 * s)
-            path.lineTo(0.78 * s, 0.2 * s)
-            path.quadTo(0.86 * s, 0.2 * s, 0.86 * s, 0.3 * s)
-            path.lineTo(0.86 * s, 0.72 * s)
-            path.quadTo(0.86 * s, 0.82 * s, 0.76 * s, 0.82 * s)
-            path.lineTo(0.24 * s, 0.82 * s)
-            path.quadTo(0.14 * s, 0.82 * s, 0.14 * s, 0.72 * s)
-            path.closeSubpath()
-            painter.drawPath(path)
-        elif name == "pause":
-            line(0.37, 0.25, 0.37, 0.75)
-            line(0.63, 0.25, 0.63, 0.75)
-        elif name == "play":
-            path = QtGui.QPainterPath(QtCore.QPointF(0.38 * s, 0.25 * s))
-            path.lineTo(0.72 * s, 0.5 * s)
-            path.lineTo(0.38 * s, 0.75 * s)
-            path.closeSubpath()
-            painter.drawPath(path)
-        elif name == "stop":
-            painter.drawRoundedRect(QtCore.QRectF(0.28 * s, 0.28 * s, 0.44 * s, 0.44 * s), 0.08 * s, 0.08 * s)
-        elif name == "link":
-            painter.drawRoundedRect(QtCore.QRectF(0.13 * s, 0.36 * s, 0.42 * s, 0.24 * s), 0.11 * s, 0.11 * s)
-            painter.drawRoundedRect(QtCore.QRectF(0.45 * s, 0.36 * s, 0.42 * s, 0.24 * s), 0.11 * s, 0.11 * s)
-            line(0.4, 0.48, 0.6, 0.48)
-        elif name == "activity":
-            line(0.12, 0.55, 0.3, 0.55)
-            line(0.3, 0.55, 0.4, 0.32)
-            line(0.4, 0.32, 0.55, 0.7)
-            line(0.55, 0.7, 0.68, 0.45)
-            line(0.68, 0.45, 0.88, 0.45)
-        elif name == "sun":
-            painter.drawEllipse(QtCore.QRectF(0.34 * s, 0.34 * s, 0.32 * s, 0.32 * s))
-            for x1, y1, x2, y2 in (
-                (0.5, 0.08, 0.5, 0.22),
-                (0.5, 0.78, 0.5, 0.92),
-                (0.08, 0.5, 0.22, 0.5),
-                (0.78, 0.5, 0.92, 0.5),
-                (0.2, 0.2, 0.3, 0.3),
-                (0.7, 0.7, 0.8, 0.8),
-                (0.8, 0.2, 0.7, 0.3),
-                (0.3, 0.7, 0.2, 0.8),
-            ):
-                line(x1, y1, x2, y2)
-        elif name == "moon":
-            path = QtGui.QPainterPath(QtCore.QPointF(0.67 * s, 0.16 * s))
-            path.cubicTo(0.43 * s, 0.19 * s, 0.30 * s, 0.36 * s, 0.31 * s, 0.56 * s)
-            path.cubicTo(0.32 * s, 0.77 * s, 0.52 * s, 0.88 * s, 0.73 * s, 0.78 * s)
-            path.cubicTo(0.52 * s, 0.94 * s, 0.20 * s, 0.82 * s, 0.14 * s, 0.55 * s)
-            path.cubicTo(0.08 * s, 0.28 * s, 0.33 * s, 0.05 * s, 0.67 * s, 0.16 * s)
-            painter.drawPath(path)
-        elif name in {"chevron-down", "chevron-up"}:
-            if name == "chevron-down":
-                line(0.27, 0.39, 0.5, 0.62)
-                line(0.5, 0.62, 0.73, 0.39)
-            else:
-                line(0.27, 0.61, 0.5, 0.38)
-                line(0.5, 0.38, 0.73, 0.61)
-        elif name == "minimize":
-            line(0.3, 0.75, 0.7, 0.75)
-        elif name == "maximize":
-            painter.drawRoundedRect(QtCore.QRectF(0.28 * s, 0.26 * s, 0.44 * s, 0.44 * s), 0.06 * s, 0.06 * s)
-        elif name == "restore":
-            painter.drawRoundedRect(QtCore.QRectF(0.26 * s, 0.38 * s, 0.46 * s, 0.38 * s), 0.06 * s, 0.06 * s)
-            painter.drawRoundedRect(QtCore.QRectF(0.28 * s, 0.22 * s, 0.46 * s, 0.38 * s), 0.06 * s, 0.06 * s)
-        elif name == "close":
-            line(0.3, 0.3, 0.7, 0.7)
-            line(0.7, 0.3, 0.3, 0.7)
-        else:
-            painter.drawEllipse(QtCore.QRectF(0.22 * s, 0.22 * s, 0.56 * s, 0.56 * s))
+        renderer.render(painter)
         painter.end()
         return QtGui.QIcon(pixmap)
