@@ -1,0 +1,17 @@
+[project]
+name = "fucking-fast-downloader"
+version = "2.0.0"
+description = "PyQt desktop downloader for public FuckingFast share links"
+requires-python = ">=3.10"
+dependencies = [
+  "PyQt5>=5.15.10",
+  "curl_cffi>=0.13.0",
+  "beautifulsoup4>=4.12.3",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
