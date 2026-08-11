@@ -7,7 +7,11 @@ import subprocess
 import sys
 from pathlib import Path
 
-from ff_downloader.config import APP_VERSION
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from ff_downloader.config import APP_VERSION  # noqa: E402
 
 APP_BASENAME = "FuckingFastDownloader"
 
@@ -128,9 +132,8 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
-    root = Path(__file__).resolve().parents[1]
-    output_dir = args.output if args.output.is_absolute() else root / args.output
-    bundle = build_bundle(root, root / ".build")
+    output_dir = args.output if args.output.is_absolute() else ROOT / args.output
+    bundle = build_bundle(ROOT, ROOT / ".build")
     archive = archive_bundle(bundle, output_dir, args.version)
     print(archive)
     return 0
