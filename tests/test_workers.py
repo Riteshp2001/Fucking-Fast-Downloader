@@ -32,20 +32,10 @@ class _ResolveParent(QtCore.QObject):
         self.resolve_calls += 1
 
 
-def test_finished_resolver_requests_latest_sources_when_input_changed() -> None:
+def test_finished_resolver_never_starts_a_second_browser_resolution() -> None:
     parent = _ResolveParent(["https://fuckingfast.co/new"])
     worker = ResolveWorker(["https://fuckingfast.co/old"], parent)
 
-    worker._resolve_latest_parent_sources()
-
-    assert parent.resolve_calls == 1
-
-
-def test_finished_resolver_does_not_repeat_unchanged_sources() -> None:
-    links = ["https://fuckingfast.co/same"]
-    parent = _ResolveParent(links)
-    worker = ResolveWorker(links, parent)
-
-    worker._resolve_latest_parent_sources()
+    worker.finished.emit()
 
     assert parent.resolve_calls == 0

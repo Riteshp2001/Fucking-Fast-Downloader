@@ -310,14 +310,23 @@ class MainWindow(QtWidgets.QMainWindow):
         ):
             resize_layout.addWidget(ResizeHandle(edges), row, col)
 
+        self.workspace_scroll = QtWidgets.QScrollArea()
+        self.workspace_scroll.setObjectName("workspaceScroll")
+        self.workspace_scroll.setWidgetResizable(True)
+        self.workspace_scroll.setFrameShape(QtWidgets.QFrame.NoFrame)
+        self.workspace_scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+        self.workspace_scroll.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAsNeeded)
+
         content = QtWidgets.QWidget()
         content.setObjectName("content")
-        resize_layout.addWidget(content, 1, 1)
+        self.workspace_scroll.setWidget(content)
+        resize_layout.addWidget(self.workspace_scroll, 1, 1)
         shell.addWidget(resize_frame, 1)
 
         body = QtWidgets.QVBoxLayout(content)
         body.setContentsMargins(30, 22, 30, 16)
         body.setSpacing(14)
+        body.setSizeConstraint(QtWidgets.QLayout.SetMinimumSize)
 
         hero = QtWidgets.QHBoxLayout()
         hero_text = QtWidgets.QVBoxLayout()
@@ -343,8 +352,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.link_splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
         self.link_splitter.setChildrenCollapsible(False)
         self.link_splitter.setHandleWidth(16)
-        self.link_splitter.setMinimumHeight(270)
-        self.link_splitter.setMaximumHeight(320)
+        self.link_splitter.setMinimumHeight(300)
 
         source_card = QtWidgets.QFrame()
         source_card.setObjectName("card")

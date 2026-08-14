@@ -230,7 +230,8 @@ class HeadlessBrowserResolver:
             raise ResolutionError(str(exc)) from exc
 
     def close(self) -> None:
-        if self._loop is None:
+        loop = self._loop
+        if loop is None:
             return
 
         async def _shutdown():
@@ -248,4 +249,12 @@ class HeadlessBrowserResolver:
         except Exception:
             pass
 
-        self._loop.call_soon_threadsafe(self._loop.stop)
+        loop.call_soon_threadsafe(loop.stop)
+        if self._loop_thread and self._loop_thread is not threading.current_thread():
+            self._loop_thread.join(timeout=5)
+
+        self._page = None
+        self._browser = None
+        self._camoufox = None
+        self._loop = None
+        self._loop_thread = None

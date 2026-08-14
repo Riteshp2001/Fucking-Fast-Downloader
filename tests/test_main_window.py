@@ -109,6 +109,8 @@ def test_workspace_stays_usable_at_a_compact_desktop_height(monkeypatch) -> None
     assert window.link_input.height() >= 120
     assert window.resolved_list.viewport().height() >= 100
     assert window.download_card.height() <= 190
+    assert isinstance(window.workspace_scroll, QtWidgets.QScrollArea)
+    assert window.link_splitter.maximumHeight() > 10_000
 
     window.close()
     app.processEvents()

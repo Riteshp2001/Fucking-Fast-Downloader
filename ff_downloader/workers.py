@@ -23,18 +23,6 @@ class ResolveWorker(QtCore.QThread):
     def __init__(self, links: list[str], parent=None):
         super().__init__(parent)
         self.links = links
-        self.finished.connect(self._resolve_latest_parent_sources)
-
-    @QtCore.pyqtSlot()
-    def _resolve_latest_parent_sources(self) -> None:
-        parent = self.parent()
-        source_links = getattr(parent, "source_links", None)
-        resolve_links = getattr(parent, "resolve_links", None)
-        if not callable(source_links) or not callable(resolve_links):
-            return
-        current_links = source_links()
-        if current_links and current_links != self.links:
-            resolve_links()
 
     def run(self) -> None:
         resolver = FuckingFastResolver(self.log.emit)
