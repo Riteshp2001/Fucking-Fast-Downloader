@@ -1,6 +1,6 @@
 [project]
 name = "fucking-fast-downloader"
-version = "2.0.2"
+version = "2.1.0"
 description = "PyQt desktop downloader for public FuckingFast share links"
 requires-python = ">=3.10"
 dependencies = [
@@ -26,3 +26,6 @@ target-version = "py310"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+  "live_network: uses a real public URL; enable explicitly with LIVE_DOWNLOAD_TESTS=1",
+]

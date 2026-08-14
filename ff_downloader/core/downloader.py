@@ -9,7 +9,7 @@ from urllib.parse import unquote, urlparse
 
 import requests
 
-from ff_downloader.config import DEFAULT_TIMEOUT, STREAM_BLOCK_SIZE, TYPICAL_PART_SIZE
+from ff_downloader.config import DEFAULT_TIMEOUT, STREAM_BLOCK_SIZE
 
 ProgressFn = Callable[[int, int, float], None]
 LogFn = Callable[[str], None]
@@ -24,7 +24,7 @@ class DownloadEngine:
 
     def __init__(self, progress: ProgressFn | None = None, log: LogFn | None = None):
         self.progress = progress or (lambda _done, _total, _speed: None)
-        self.log = log or (lambda _message: None)
+        self.log = log or (lambda *_message: None)
         self._pause = threading.Event()
         self._cancel = threading.Event()
 
@@ -66,10 +66,6 @@ class DownloadEngine:
         self._pause.clear()
 
         existing_size = destination.stat().st_size if destination.is_file() else 0
-        if existing_size == TYPICAL_PART_SIZE:
-            self.log("Skipping existing complete file", destination.name)
-            return destination
-
         req_headers = {}
         if existing_size > 0:
             req_headers["Range"] = f"bytes={existing_size}-"
@@ -77,7 +73,7 @@ class DownloadEngine:
         response = requests.get(url, headers=req_headers, stream=True, timeout=DEFAULT_TIMEOUT)
 
         if response.status_code == 416:
-            self.log("File already complete", destination.name)
+            self.log(f"File already complete: {destination.name}")
             response.close()
             return destination
 
@@ -86,24 +82,32 @@ class DownloadEngine:
             match = re.search(r"/(\d+)$", content_range)
             total_size = int(match.group(1)) if match else existing_size + int(response.headers.get("content-length", 0))
             if existing_size >= total_size > 0:
-                self.log("File already complete", destination.name)
+                self.log(f"File already complete: {destination.name}")
                 response.close()
                 return destination
             mode = "ab"
             initial = existing_size
-            self.log("Resuming download", f"{destination.name} from {existing_size} bytes")
+            self.log(f"Resuming {destination.name} from {existing_size} bytes")
         elif response.status_code == 200:
             total_size = int(response.headers.get("content-length", 0) or 0)
             if existing_size > 0 and total_size and existing_size >= total_size:
-                self.log("File already complete", destination.name)
+                self.log(f"File already complete: {destination.name}")
                 response.close()
                 return destination
             if existing_size > 0:
-                self.log("Server ignored Range, re-downloading", destination.name)
+                self.log(f"Server ignored resume request; restarting {destination.name}")
             mode = "wb"
             initial = 0
         else:
             response.close()
+            if (
+                urlparse(url).hostname == "dl.fuckingfast.co"
+                and response.status_code in {401, 403, 404, 410}
+            ):
+                raise RuntimeError(
+                    "This direct link has expired or is unavailable. Paste the original share link "
+                    "to prepare a fresh download URL."
+                )
             raise RuntimeError(f"Failed to download file (HTTP {response.status_code})")
 
         started = time.monotonic()
@@ -125,5 +129,5 @@ class DownloadEngine:
         if total_size and final_size < total_size:
             raise RuntimeError(f"Download incomplete: {final_size}/{total_size} bytes")
 
-        self.log("Successfully downloaded file", destination.name)
+        self.log(f"Downloaded {destination.name}")
         return destination

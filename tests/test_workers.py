@@ -5,25 +5,18 @@ from PyQt5 import QtCore
 from ff_downloader.workers import (
     DownloadWorker,
     ResolveWorker,
-    _clear_cached_resolution,
-    _remember_resolution,
 )
 
 
-def test_download_worker_reuses_only_exact_cached_resolution_batch(tmp_path) -> None:
+def test_download_worker_uses_the_prepared_queue_without_global_cache(tmp_path) -> None:
     source_links = ["https://fitgirl-repacks.site/example/"]
     pairs = [
         ("https://fuckingfast.co/part-1", "https://dl.fuckingfast.co/direct-1"),
         ("https://fuckingfast.co/part-2", "https://dl.fuckingfast.co/direct-2"),
     ]
-    _remember_resolution(source_links, pairs)
+    worker = DownloadWorker(source_links, tmp_path, resolved_links=pairs)
 
-    matched = DownloadWorker(source_links, tmp_path)
-    unmatched = DownloadWorker(["https://fitgirl-repacks.site/another/"], tmp_path)
-
-    assert matched.resolved_urls == dict(pairs)
-    assert unmatched.resolved_urls == {}
-    _clear_cached_resolution(source_links)
+    assert worker.resolved_links == pairs
 
 
 class _ResolveParent(QtCore.QObject):

@@ -93,26 +93,21 @@ class SolarIconFactory:
             '6.5 0 1 1-8.924-8.924C12.54 2.693 12.463 2 12 2 6.477 2 2 6.477 2 '
             '12s4.477 10 10 10Z"/>'
         ),
+        "minimize": (
+            '<path fill="none" stroke="currentColor" stroke-linecap="round" '
+            'stroke-width="1.75" d="M6 12h12"/>'
+        ),
         "maximize": (
-            '<g fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 '
-            '12c0-4.714 0-7.071 1.464-8.536C4.93 2 7.286 2 12 2s7.071 0 8.535 '
-            '1.464C22 4.93 22 7.286 22 12s0 7.071-1.465 8.535C19.072 22 16.714 22 '
-            '12 22s-7.071 0-8.536-1.465C2 19.072 2 16.714 2 12Z"/><path '
-            'stroke-linecap="round" stroke-linejoin="round" d="M17 10V7h-3m3 0-3.5 '
-            '3.5M7 14v3h3m-3 0 3.5-3.5"/></g>'
+            '<rect x="5.5" y="5.5" width="13" height="13" rx="1" fill="none" '
+            'stroke="currentColor" stroke-width="1.6"/>'
         ),
         "restore": (
-            '<g fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 '
-            '12c0-4.714 0-7.071 1.464-8.536C4.93 2 7.286 2 12 2s7.071 0 8.535 '
-            '1.464C22 4.93 22 7.286 22 12s0 7.071-1.465 8.535C19.072 22 16.714 22 '
-            '12 22s-7.071 0-8.536-1.465C2 19.072 2 16.714 2 12Z"/><path '
-            'stroke-linecap="round" stroke-linejoin="round" d="M10.5 16.5v-3h-3m3 0L7 '
-            '17m6.5-9.5v3h3m-3 0L17 7"/></g>'
+            '<g fill="none" stroke="currentColor" stroke-linejoin="round" stroke-width="1.6">'
+            '<path d="M8 5.5h10.5V16"/><path d="M16 8H5.5v10.5H16z"/></g>'
         ),
         "close": (
-            '<g fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" '
-            'cy="12" r="10"/><path stroke-linecap="round" d="m14.5 9.5-5 5m0-5 5 '
-            '5"/></g>'
+            '<path fill="none" stroke="currentColor" stroke-linecap="round" '
+            'stroke-width="1.75" d="m7 7 10 10m0-10L7 17"/>'
         ),
     }
 

@@ -14,7 +14,6 @@ from ff_downloader.config import (
     BROWSER_RESOLVE_ATTEMPTS,
     BROWSER_RETRY_DELAY,
     CF_WAIT_SECS,
-    CLICK_WIDGET_AFTER_SECS,
     HEADLESS_BROWSER,
     TURNSTILE_WAIT_SECS,
 )
@@ -24,11 +23,11 @@ LogFn = Callable[[str], None]
 
 
 class HeadlessBrowserResolver:
-    """Resolve FuckingFast share links by driving a headless Camoufox session
-    (stealth-patched Firefox) through the Cloudflare / Turnstile flow.
+    """Resolve share links in a user-visible Camoufox browser session.
 
-    A persistent browser profile keeps the cf_clearance cookie, so once
-    Cloudflare has been cleared the captcha widget never appears again.
+    A persistent profile retains the browser's normal session state. If the
+    host asks for a Cloudflare or Turnstile check, the user completes it in the
+    visible browser window before the app requests a fresh direct URL.
     """
 
     def __init__(self, log: LogFn | None = None):
@@ -66,7 +65,7 @@ class HeadlessBrowserResolver:
 
     async def _ensure_browser(self):
         if self._browser is None:
-            self.log("Launching headless Camoufox…")
+            self.log("Opening a browser window to prepare the download…")
             os.makedirs(BROWSER_PROFILE_DIR, exist_ok=True)
             self._camoufox = AsyncCamoufox(
                 headless=HEADLESS_BROWSER,
@@ -128,8 +127,7 @@ class HeadlessBrowserResolver:
         return False
 
     async def _wait_for_turnstile(self, page) -> str | None:
-        self.log("Waiting for Turnstile token…")
-        clicked = False
+        self.log("Complete verification in the browser window, then return here…")
         for i in range(TURNSTILE_WAIT_SECS):
             try:
                 token = await page.evaluate(
@@ -142,14 +140,6 @@ class HeadlessBrowserResolver:
                     return token
             except Exception:
                 pass
-
-            if not clicked and i == CLICK_WIDGET_AFTER_SECS:
-                try:
-                    await page.locator("#cf-turnstile").click(timeout=3000)
-                    clicked = True
-                    self.log("Clicked Turnstile widget, waiting for token")
-                except Exception:
-                    pass
 
             await asyncio.sleep(1)
         return None
@@ -189,8 +179,12 @@ class HeadlessBrowserResolver:
         for attempt in range(1, BROWSER_RESOLVE_ATTEMPTS + 1):
             try:
                 await page.goto(link, wait_until="domcontentloaded")
-            except Exception:
-                pass
+            except Exception as exc:
+                last_error = f"Could not open the share page: {exc}"
+                if attempt < BROWSER_RESOLVE_ATTEMPTS:
+                    await asyncio.sleep(BROWSER_RETRY_DELAY)
+                    continue
+                break
 
             if not await self._wait_for_cf_clear(page):
                 last_error = "Stuck on Cloudflare 'Just a moment' page"

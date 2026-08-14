@@ -4,6 +4,7 @@ import re
 import time
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
+from html import unescape
 from urllib.parse import urlparse
 
 import requests
@@ -23,6 +24,14 @@ class ResolvedLink:
     direct_url: str
 
 
+@dataclass(frozen=True)
+class ResolutionBatch:
+    """The usable links and the individual source links that need attention."""
+
+    links: list[ResolvedLink]
+    failures: list[tuple[str, str]]
+
+
 class FuckingFastResolver:
     """Resolve public FuckingFast share URLs through the site's HTMX flow,
     using a headless Chrome session to pass Cloudflare / Turnstile."""
@@ -34,7 +43,7 @@ class FuckingFastResolver:
     @staticmethod
     def _file_id(link: str) -> str:
         parsed = urlparse(link.strip())
-        if parsed.netloc not in {"fuckingfast.co", "www.fuckingfast.co"}:
+        if parsed.hostname not in {"fuckingfast.co", "www.fuckingfast.co"}:
             raise ResolutionError(f"Unsupported FuckingFast URL: {link}")
         path = parsed.path.strip("/")
         if path.startswith("f/"):
@@ -45,6 +54,15 @@ class FuckingFastResolver:
             raise ResolutionError(f"Could not determine file id from: {link}")
         return path
 
+    @staticmethod
+    def _is_direct_link(link: str) -> bool:
+        parsed = urlparse(link.strip())
+        return parsed.scheme in {"http", "https"} and parsed.hostname == "dl.fuckingfast.co"
+
+    @staticmethod
+    def _is_share_link(link: str) -> bool:
+        return urlparse(link.strip()).hostname in {"fuckingfast.co", "www.fuckingfast.co"}
+
     def extract_fitgirl_links(self, url: str) -> list[str]:
         self.log("Scanning page for FuckingFast links…")
         try:
@@ -53,13 +71,30 @@ class FuckingFastResolver:
         except RequestException as exc:
             raise ResolutionError(f"Could not read source page: {exc}") from exc
 
-        soup = BeautifulSoup(response.text, "html.parser")
-        links: list[str] = []
+        page_text = unescape(response.text)
+        soup = BeautifulSoup(page_text, "html.parser")
+        candidates: list[str] = []
         for anchor in soup.find_all("a", href=True):
             href = anchor.get("href", "").strip()
-            if "fuckingfast.co" in href and "dl.fuckingfast" not in href:
-                links.append(href)
-        unique = list(dict.fromkeys(links))
+            if href:
+                candidates.append(href)
+
+        candidates.extend(
+            re.findall(
+                r"https?://(?:www\.)?fuckingfast\.co/(?:f/)?[A-Za-z0-9_-]+[^\s\"'<>]*",
+                page_text,
+                flags=re.IGNORECASE,
+            )
+        )
+        unique = list(
+            dict.fromkeys(
+                candidate.rstrip(".,;:!?)\\]}")
+                for candidate in candidates
+                if self._is_share_link(candidate)
+            )
+        )
+        if not unique:
+            raise ResolutionError("No FuckingFast share links were found on that page")
         self.log(f"Found {len(unique)} share link(s).")
         return unique
 
@@ -77,19 +112,32 @@ class FuckingFastResolver:
 
     def resolve(self, link: str) -> str:
         link = link.strip()
-        if "dl.fuckingfast.co" in link:
+        if self._is_direct_link(link):
             return link
         self._file_id(link)
         return self._browser.resolve(link)
 
-    def resolve_many(self, links: Iterable[str]) -> list[ResolvedLink]:
+    def resolve_available(self, links: Iterable[str]) -> ResolutionBatch:
+        """Resolve every available source without discarding a usable batch for one failure."""
+
         expanded = self.expand_sources(links)
-        output: list[ResolvedLink] = []
+        resolved: list[ResolvedLink] = []
+        failures: list[tuple[str, str]] = []
         for index, link in enumerate(expanded):
-            output.append(ResolvedLink(source_url=link, direct_url=self.resolve(link)))
+            try:
+                resolved.append(ResolvedLink(source_url=link, direct_url=self.resolve(link)))
+            except ResolutionError as exc:
+                failures.append((link, str(exc)))
             if index + 1 < len(expanded):
                 time.sleep(BETWEEN_LINK_DELAY)
-        return output
+        return ResolutionBatch(links=resolved, failures=failures)
+
+    def resolve_many(self, links: Iterable[str]) -> list[ResolvedLink]:
+        batch = self.resolve_available(links)
+        if batch.failures:
+            failed = "; ".join(f"{link}: {error}" for link, error in batch.failures)
+            raise ResolutionError(failed)
+        return batch.links
 
     def close(self) -> None:
         self._browser.close()

@@ -46,7 +46,7 @@ class TitleBar(QtWidgets.QFrame):
         layout.addStretch(1)
 
         self.theme_button = self._window_button("sun", "Toggle theme")
-        self.min_button = self._window_button("restore", "Minimize")
+        self.min_button = self._window_button("minimize", "Minimize")
         self.max_button = self._window_button("maximize", "Maximize")
         self.close_button = self._window_button("close", "Close", danger=True)
 
@@ -147,38 +147,38 @@ class ResizeHandle(QtWidgets.QWidget):
 class MainWindow(QtWidgets.QMainWindow):
     PALETTES = {
         "dark": {
-            "bg": "#090E17",
-            "title": "#0D1420",
-            "surface": "#111926",
-            "surface_alt": "#0C131E",
-            "surface_hover": "#172233",
-            "border": "#263447",
-            "border_hover": "#3B4C63",
-            "text": "#F8FAFC",
-            "muted": "#94A3B8",
-            "subtle": "#64748B",
-            "accent": "#5EEAD4",
-            "accent_hover": "#7AF2DF",
-            "accent_text": "#06201C",
-            "danger": "#FB7185",
-            "selection": "#164E49",
+            "bg": "#171A15",
+            "title": "#1D211B",
+            "surface": "#22261F",
+            "surface_alt": "#1B1F19",
+            "surface_hover": "#2C322A",
+            "border": "#414A3E",
+            "border_hover": "#778370",
+            "text": "#F4F5ED",
+            "muted": "#C0C7B9",
+            "subtle": "#9BA697",
+            "accent": "#91D6A8",
+            "accent_hover": "#B4E4C2",
+            "accent_text": "#142419",
+            "danger": "#FFB1BF",
+            "selection": "#314A35",
         },
         "light": {
-            "bg": "#F4F7FB",
-            "title": "#FFFFFF",
-            "surface": "#FFFFFF",
-            "surface_alt": "#F8FAFC",
-            "surface_hover": "#EEF3F8",
-            "border": "#D8E0EA",
-            "border_hover": "#B8C5D4",
-            "text": "#0F172A",
-            "muted": "#526277",
-            "subtle": "#7A899B",
-            "accent": "#0F766E",
-            "accent_hover": "#0D9488",
-            "accent_text": "#FFFFFF",
-            "danger": "#E11D48",
-            "selection": "#CCFBF1",
+            "bg": "#F5F4EE",
+            "title": "#FBFAF5",
+            "surface": "#FFFEF9",
+            "surface_alt": "#F0F1E9",
+            "surface_hover": "#E7ECE5",
+            "border": "#CFD5C9",
+            "border_hover": "#899885",
+            "text": "#18251B",
+            "muted": "#445548",
+            "subtle": "#68796B",
+            "accent": "#216B4D",
+            "accent_hover": "#18563D",
+            "accent_text": "#FEFEF8",
+            "danger": "#B42345",
+            "selection": "#D9E9D9",
         },
     }
 
@@ -196,17 +196,20 @@ class MainWindow(QtWidgets.QMainWindow):
         self.setMinimumSize(840, 650)
 
         self.settings = QtCore.QSettings("Riteshp2001", APP_NAME)
-        saved_theme = str(self.settings.value("theme", "dark"))
+        saved_theme = str(self.settings.value("theme", "light"))
         self.theme = saved_theme if saved_theme in self.PALETTES else "dark"
         self.resolve_worker: ResolveWorker | None = None
         self.download_worker: DownloadWorker | None = None
         self.download_dir = DOWNLOADS_DIR
         self.resolved_pairs: list[tuple[str, str]] = []
+        self.resolution_failures: list[tuple[str, str]] = []
         self._active_download = False
         self._paused = False
         self._details_open = False
         self._source_revision = ""
         self._resolve_revision = ""
+        self._prepared_revision = ""
+        self._failed_downloads = 0
 
         self._build_ui()
         self._connect()
@@ -312,18 +315,18 @@ class MainWindow(QtWidgets.QMainWindow):
         shell.addWidget(resize_frame, 1)
 
         body = QtWidgets.QVBoxLayout(content)
-        body.setContentsMargins(24, 20, 24, 20)
-        body.setSpacing(16)
+        body.setContentsMargins(30, 24, 30, 18)
+        body.setSpacing(12)
 
         hero = QtWidgets.QHBoxLayout()
         hero_text = QtWidgets.QVBoxLayout()
         hero_text.setSpacing(4)
-        eyebrow = QtWidgets.QLabel("FAST. CLEAN. DIRECT.")
+        eyebrow = QtWidgets.QLabel("YOUR DOWNLOADS")
         eyebrow.setObjectName("eyebrow")
-        title = QtWidgets.QLabel("Paste a link. We handle the rest.")
+        title = QtWidgets.QLabel("Downloads")
         title.setObjectName("appTitle")
         subtitle = QtWidgets.QLabel(
-            "FuckingFast and FitGirl links resolve automatically after paste, without hiding the original URLs."
+            "Paste links, prepare the queue, then download what is ready."
         )
         subtitle.setObjectName("subtitle")
         subtitle.setWordWrap(True)
@@ -332,13 +335,13 @@ class MainWindow(QtWidgets.QMainWindow):
         hero_text.addWidget(subtitle)
         hero.addLayout(hero_text, 1)
 
-        self.folder_btn = self._button("Choose folder", "folder", compact=True)
+        self.folder_btn = self._button("Save folder", "folder", compact=True)
         hero.addWidget(self.folder_btn, 0, QtCore.Qt.AlignBottom)
         body.addLayout(hero)
 
-        self.link_splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
+        self.link_splitter = QtWidgets.QSplitter(QtCore.Qt.Vertical)
         self.link_splitter.setChildrenCollapsible(False)
-        self.link_splitter.setHandleWidth(12)
+        self.link_splitter.setHandleWidth(1)
 
         source_card = QtWidgets.QFrame()
         source_card.setObjectName("card")
@@ -348,25 +351,26 @@ class MainWindow(QtWidgets.QMainWindow):
         source_layout.addLayout(
             self._section_heading(
                 "paste",
-                "Source links",
-                "Paste one or many URLs. Pasted links resolve automatically; typed links can be resolved manually.",
+                "1. Add links",
+                "One URL per line. Duplicates are ignored.",
             )
         )
 
         self.link_input = LinkInput()
         self.link_input.setObjectName("linkInput")
         self.link_input.setPlaceholderText(
-            "Paste FuckingFast links or a fitgirl-repacks.site page here…"
+            "Paste public share or direct download URLs here…"
         )
-        self.link_input.setMinimumHeight(150)
+        self.link_input.setMinimumHeight(142)
+        self.link_input.setMaximumHeight(180)
         source_layout.addWidget(self.link_input, 1)
 
         source_footer = QtWidgets.QHBoxLayout()
         self.source_count = QtWidgets.QLabel("0 links")
         self.source_count.setObjectName("pill")
-        self.input_hint = QtWidgets.QLabel("Ctrl+V to paste · duplicates are ignored")
+        self.input_hint = QtWidgets.QLabel("Paste to prepare automatically")
         self.input_hint.setObjectName("hint")
-        self.resolve_btn = self._button("Resolve links", "link", compact=True)
+        self.resolve_btn = self._button("Prepare", "link", compact=True)
         source_footer.addWidget(self.source_count)
         source_footer.addWidget(self.input_hint)
         source_footer.addStretch(1)
@@ -384,21 +388,21 @@ class MainWindow(QtWidgets.QMainWindow):
         resolved_head.addLayout(
             self._section_heading(
                 "link",
-                "Resolved links",
-                "Direct URLs appear here while your original links stay untouched.",
+                "2. Review queue",
+                "Files appear here when they are ready.",
             ),
             1,
         )
         self.resolved_count = QtWidgets.QLabel("Waiting")
         self.resolved_count.setObjectName("pill")
-        self.copy_btn = self._icon_button("copy", "Copy all resolved links")
+        self.copy_btn = self._icon_button("copy", "Copy prepared direct URLs")
         resolved_head.addWidget(self.resolved_count, 0, QtCore.Qt.AlignTop)
         resolved_head.addWidget(self.copy_btn, 0, QtCore.Qt.AlignTop)
         resolved_layout.addLayout(resolved_head)
 
         self.resolved_list = QtWidgets.QTreeWidget()
         self.resolved_list.setObjectName("resolvedList")
-        self.resolved_list.setHeaderLabels(["Source", "Direct link"])
+        self.resolved_list.setHeaderLabels(["Source", "Prepared download"])
         self.resolved_list.setRootIsDecorated(False)
         self.resolved_list.setAlternatingRowColors(False)
         self.resolved_list.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
@@ -407,19 +411,25 @@ class MainWindow(QtWidgets.QMainWindow):
         self.resolved_list.header().setSectionResizeMode(
             0, QtWidgets.QHeaderView.ResizeToContents
         )
-        resolved_layout.addWidget(self.resolved_list, 1)
-
+        self.resolved_list.setMinimumHeight(72)
+        self.resolved_list.setMaximumHeight(172)
         self.resolve_empty = QtWidgets.QLabel(
-            "Paste links on the left. Resolved direct links will show here."
+            "Paste a link above to build your download queue."
         )
         self.resolve_empty.setObjectName("emptyState")
         self.resolve_empty.setAlignment(QtCore.Qt.AlignCenter)
         self.resolve_empty.setWordWrap(True)
-        resolved_layout.addWidget(self.resolve_empty)
+        self.resolve_empty.setMinimumHeight(64)
+        self.queue_stack = QtWidgets.QStackedWidget()
+        self.queue_stack.addWidget(self.resolve_empty)
+        self.queue_stack.addWidget(self.resolved_list)
+        self.queue_stack.setMaximumHeight(172)
+        resolved_layout.addWidget(self.queue_stack)
         self.link_splitter.addWidget(resolved_card)
-        self.link_splitter.setStretchFactor(0, 1)
+        self.link_splitter.setStretchFactor(0, 3)
         self.link_splitter.setStretchFactor(1, 1)
-        body.addWidget(self.link_splitter, 1)
+        self.link_splitter.setSizes([270, 128])
+        body.addWidget(self.link_splitter, 0)
 
         activity = QtWidgets.QFrame()
         activity.setObjectName("card")
@@ -431,8 +441,8 @@ class MainWindow(QtWidgets.QMainWindow):
         activity_head.addLayout(
             self._section_heading(
                 "download",
-                "Download",
-                "Choose a folder and start when the links are ready.",
+                "3. Download",
+                "Save the prepared queue to the selected folder.",
             ),
             1,
         )
@@ -459,20 +469,24 @@ class MainWindow(QtWidgets.QMainWindow):
         self.progress.setFixedHeight(9)
         activity_layout.addWidget(self.progress)
 
-        metric_row = QtWidgets.QHBoxLayout()
-        speed_card, self.speed_value = self._metric("Speed", "0 MB/s")
-        progress_card, self.progress_value = self._metric("Progress", "0%")
-        size_card, self.size_value = self._metric("Transferred", "0 / 0 MB")
-        metric_row.addWidget(speed_card)
-        metric_row.addWidget(progress_card)
-        metric_row.addWidget(size_card)
-        activity_layout.addLayout(metric_row)
+        transfer_details = QtWidgets.QHBoxLayout()
+        self.progress_value = QtWidgets.QLabel("0% complete")
+        self.progress_value.setObjectName("transferDetail")
+        self.speed_value = QtWidgets.QLabel("0 MB/s")
+        self.speed_value.setObjectName("transferDetail")
+        self.size_value = QtWidgets.QLabel("0 / 0 MB")
+        self.size_value.setObjectName("transferDetail")
+        transfer_details.addWidget(self.progress_value)
+        transfer_details.addWidget(self.speed_value)
+        transfer_details.addWidget(self.size_value)
+        transfer_details.addStretch(1)
+        activity_layout.addLayout(transfer_details)
 
         action_row = QtWidgets.QHBoxLayout()
-        self.details_btn = self._button("Show details", "document", compact=True)
+        self.details_btn = self._button("Details", "document", compact=True)
         self.pause_resume_btn = self._button("Pause", "pause", compact=True)
         self.cancel_btn = self._button("Cancel", "stop", compact=True)
-        self.download_btn = self._button("Download", "download", primary=True)
+        self.download_btn = self._button("Download ready files", "download", primary=True)
         action_row.addWidget(self.details_btn)
         action_row.addStretch(1)
         action_row.addWidget(self.pause_resume_btn)
@@ -486,7 +500,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.log_view.setMinimumHeight(120)
         self.log_view.setVisible(False)
         activity_layout.addWidget(self.log_view)
-        body.addWidget(activity)
+        self.download_card = activity
+        self.download_card.setVisible(False)
+        body.addWidget(self.download_card)
 
         footer = QtWidgets.QHBoxLayout()
         self.status_icon = QtWidgets.QLabel()
@@ -522,11 +538,6 @@ class MainWindow(QtWidgets.QMainWindow):
         super().changeEvent(event)
 
     def resizeEvent(self, event: QtGui.QResizeEvent) -> None:
-        orientation = (
-            QtCore.Qt.Vertical if event.size().width() < 980 else QtCore.Qt.Horizontal
-        )
-        if self.link_splitter.orientation() != orientation:
-            self.link_splitter.setOrientation(orientation)
         super().resizeEvent(event)
 
     def toggle_theme(self) -> None:
@@ -555,18 +566,19 @@ class MainWindow(QtWidgets.QMainWindow):
             QPushButton#winButton:hover {{ background: {p['surface_hover']}; }}
             QPushButton#winClose:hover {{ background: {p['danger']}; }}
             QLabel#eyebrow {{ color: {p['accent']}; font-size: 10px; font-weight: 750; letter-spacing: 1.5px; }}
-            QLabel#appTitle {{ font-size: 28px; font-weight: 750; }}
+            QLabel#appTitle {{ font-size: 24px; font-weight: 750; }}
             QLabel#subtitle {{ color: {p['muted']}; font-size: 12px; }}
             QLabel#sectionTitle {{ font-size: 15px; font-weight: 700; }}
-            QLabel#helper, QLabel#hint, QLabel#pathLabel, QLabel#footerText {{ color: {p['muted']}; }}
+            QLabel#helper, QLabel#hint, QLabel#pathLabel, QLabel#footerText, QLabel#transferDetail {{ color: {p['muted']}; }}
             QLabel#helper {{ font-size: 11px; }}
             QLabel#hint {{ font-size: 10px; }}
             QLabel#pathLabel {{ font-size: 10px; }}
+            QLabel#transferDetail {{ font-size: 11px; font-weight: 600; }}
             QLabel#fileName {{ font-size: 14px; font-weight: 650; }}
             QLabel#emptyState {{ color: {p['subtle']}; font-size: 11px; padding: 18px; }}
             QLabel#pill, QLabel#statePill {{ background: {p['surface_alt']}; border: 1px solid {p['border']}; border-radius: 11px; padding: 4px 9px; color: {p['muted']}; font-size: 10px; font-weight: 700; }}
             QLabel#statePill {{ color: {p['accent']}; }}
-            QFrame#card {{ background: {p['surface']}; border: 1px solid {p['border']}; border-radius: 14px; }}
+            QFrame#card {{ background: {p['surface']}; border: 1px solid {p['border']}; border-radius: 12px; }}
             QFrame#metricCard {{ background: {p['surface_alt']}; border: 1px solid {p['border']}; border-radius: 10px; }}
             QLabel#metricLabel {{ color: {p['subtle']}; font-size: 9px; font-weight: 700; letter-spacing: .8px; }}
             QLabel#metricValue {{ font-size: 13px; font-weight: 700; }}
@@ -578,10 +590,10 @@ class MainWindow(QtWidgets.QMainWindow):
             QPushButton[primary="true"]:hover {{ background: {p['accent_hover']}; border-color: {p['accent_hover']}; }}
             QPushButton[iconOnly="true"] {{ padding: 0; }}
             QPlainTextEdit#linkInput, QTreeWidget#resolvedList, QTextEdit#logView {{ background: {p['surface_alt']}; color: {p['text']}; border: 1px solid {p['border']}; border-radius: 10px; selection-background-color: {p['selection']}; selection-color: {p['text']}; }}
-            QPlainTextEdit#linkInput {{ padding: 10px; font-size: 11px; }}
+            QPlainTextEdit#linkInput {{ padding: 12px; font-size: 11px; }}
             QPlainTextEdit#linkInput:focus, QTreeWidget#resolvedList:focus {{ border-color: {p['accent']}; }}
             QTreeWidget#resolvedList {{ outline: none; }}
-            QTreeWidget#resolvedList::item {{ min-height: 32px; padding: 3px 6px; border-radius: 6px; }}
+            QTreeWidget#resolvedList::item {{ min-height: 30px; padding: 3px 6px; border-radius: 6px; }}
             QTreeWidget#resolvedList::item:hover {{ background: {p['surface_hover']}; }}
             QHeaderView::section {{ background: {p['surface']}; color: {p['muted']}; border: none; border-bottom: 1px solid {p['border']}; padding: 7px; font-size: 10px; font-weight: 650; }}
             QTextEdit#logView {{ padding: 8px; color: {p['muted']}; font-family: 'Cascadia Mono', 'Consolas', monospace; font-size: 10px; }}
@@ -635,9 +647,12 @@ class MainWindow(QtWidgets.QMainWindow):
         if revision != self._source_revision:
             self._source_revision = revision
             self.resolved_pairs.clear()
+            self.resolution_failures.clear()
+            self._prepared_revision = ""
             self.resolved_list.clear()
             self.resolved_count.setText("Waiting" if not links else "Not resolved")
-            self.resolve_empty.setVisible(True)
+            self.resolve_empty.setText("Paste a link above to build your download queue.")
+            self.queue_stack.setCurrentWidget(self.resolve_empty)
         self._sync_actions()
 
     def _auto_resolve_after_paste(self) -> None:
@@ -654,12 +669,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.resolve_btn.setEnabled(False)
         self._resolve_revision = "\n".join(links)
         self.resolved_count.setText("Resolving…")
-        self.resolve_empty.setText("Resolving links…")
-        self.resolve_empty.setVisible(True)
+        self.resolve_empty.setText("Preparing links… A browser check may need your attention.")
+        self.queue_stack.setCurrentWidget(self.resolve_empty)
         self._set_status(f"Resolving {len(links)} link(s)…", "RESOLVING")
         self.resolve_worker = ResolveWorker(links, self)
         self.resolve_worker.log.connect(self.log)
-        self.resolve_worker.resolved.connect(self._show_resolved)
+        self.resolve_worker.completed.connect(self._show_resolution)
         self.resolve_worker.failed.connect(self._resolve_failed)
         self.resolve_worker.finished.connect(self._resolve_finished)
         self.resolve_worker.start()
@@ -669,20 +684,25 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _resolve_failed(self, error: str) -> None:
         self.resolved_pairs.clear()
+        self.resolution_failures.clear()
+        self._prepared_revision = ""
         self.resolved_list.clear()
         self.resolved_count.setText("Failed")
         self.resolve_empty.setText(
-            "Could not resolve these links. The original URLs are still available on the left."
+            "These links could not be prepared. Check the original URLs and try again."
         )
-        self.resolve_empty.setVisible(True)
+        self.queue_stack.setCurrentWidget(self.resolve_empty)
         self._set_status("Resolve failed", "ERROR")
         self.log(f"Resolve failed: {error}")
+        self._sync_actions()
 
-    def _show_resolved(self, pairs: list) -> None:
+    def _show_resolution(self, pairs: list, failures: list) -> None:
         if "\n".join(self.source_links()) != self._resolve_revision:
-            self.log("Ignored stale resolve result because the source links changed")
+            self.log("Ignored a prepared queue because the source links changed")
             return
         self.resolved_pairs = [(str(source), str(direct)) for source, direct in pairs]
+        self.resolution_failures = [(str(source), str(error)) for source, error in failures]
+        self._prepared_revision = self._resolve_revision
         self.resolved_list.clear()
         for source, direct in self.resolved_pairs:
             item = QtWidgets.QTreeWidgetItem([self._short_url(source), direct])
@@ -691,11 +711,26 @@ class MainWindow(QtWidgets.QMainWindow):
             item.setToolTip(0, source)
             item.setToolTip(1, direct)
             self.resolved_list.addTopLevelItem(item)
+        for source, error in self.resolution_failures:
+            item = QtWidgets.QTreeWidgetItem([self._short_url(source), f"Needs attention — {error}"])
+            item.setData(0, QtCore.Qt.UserRole, source)
+            item.setToolTip(0, source)
+            item.setToolTip(1, error)
+            self.resolved_list.addTopLevelItem(item)
         count = len(self.resolved_pairs)
-        self.resolved_count.setText(f"{count} ready")
-        self.resolve_empty.setVisible(count == 0)
-        self._set_status(f"Resolved {count} direct link(s)", "READY")
-        self.log(f"Resolved {count} direct link(s)")
+        failed = len(self.resolution_failures)
+        self.resolved_count.setText(f"{count} ready" if not failed else f"{count} ready · {failed} check")
+        self.queue_stack.setCurrentWidget(
+            self.resolved_list if count + failed else self.resolve_empty
+        )
+        if count:
+            status = f"Prepared {count} download" if count == 1 else f"Prepared {count} downloads"
+            if failed:
+                status += f"; {failed} need attention"
+            self._set_status(status, "READY")
+        else:
+            self._set_status("No downloads could be prepared", "ERROR")
+        self.log(f"Prepared {count} direct link(s); {failed} need attention")
         self._sync_actions()
 
     @staticmethod
@@ -717,6 +752,7 @@ class MainWindow(QtWidgets.QMainWindow):
         menu = QtWidgets.QMenu(self)
         copy_direct = menu.addAction("Copy direct link")
         copy_source = menu.addAction("Copy source link")
+        copy_direct.setEnabled(bool(item.data(1, QtCore.Qt.UserRole)))
         action = menu.exec_(self.resolved_list.viewport().mapToGlobal(position))
         if action is copy_direct:
             QtWidgets.QApplication.clipboard().setText(
@@ -742,14 +778,23 @@ class MainWindow(QtWidgets.QMainWindow):
         if not links:
             self._set_status("Paste at least one link first", "READY")
             return
+        if not self.resolved_pairs or self._prepared_revision != "\n".join(links):
+            self._set_status("Prepare at least one working link before downloading", "READY")
+            return
         if self._active_download:
             return
 
         self._active_download = True
         self._paused = False
+        self._failed_downloads = 0
         self.progress.setValue(0)
         self._set_status("Download session started", "ACTIVE")
-        self.download_worker = DownloadWorker(links, self.download_dir, self)
+        self.download_worker = DownloadWorker(
+            links,
+            self.download_dir,
+            self,
+            resolved_links=self.resolved_pairs,
+        )
         self.download_worker.log.connect(self.log)
         self.download_worker.current_file.connect(self.file_label.setText)
         self.download_worker.progress.connect(self.update_progress)
@@ -777,13 +822,19 @@ class MainWindow(QtWidgets.QMainWindow):
             self._set_status("Cancelling…", "CANCELLING")
 
     def _download_failed(self, link: str, error: str) -> None:
+        self._failed_downloads += 1
         self._set_status("One item failed", "ERROR")
         self.log(f"Failed {link}: {error}")
 
     def _download_finished(self) -> None:
         self._active_download = False
         self._paused = False
-        self._set_status("Download session finished", "READY")
+        if self._failed_downloads:
+            self._set_status(
+                f"Download finished; {self._failed_downloads} item(s) need attention", "ERROR"
+            )
+        else:
+            self._set_status("Download complete", "READY")
         self.log("Download session finished")
         self._sync_actions()
 
@@ -791,7 +842,7 @@ class MainWindow(QtWidgets.QMainWindow):
         fraction = done / total if total else 0
         self.progress.setValue(max(0, min(1000, int(fraction * 1000))))
         self.speed_value.setText(f"{speed / 1048576:.1f} MB/s")
-        self.progress_value.setText(f"{fraction * 100:.1f}%")
+        self.progress_value.setText(f"{fraction * 100:.1f}% complete")
         self.size_value.setText(
             f"{done / 1048576:.1f} / {total / 1048576:.1f} MB"
         )
@@ -799,17 +850,20 @@ class MainWindow(QtWidgets.QMainWindow):
     def toggle_details(self) -> None:
         self._details_open = not self._details_open
         self.log_view.setVisible(self._details_open)
-        self.details_btn.setText("Hide details" if self._details_open else "Show details")
+        self.details_btn.setText("Hide details" if self._details_open else "Details")
 
     def _sync_actions(self) -> None:
         has_links = bool(self.source_links())
         resolving = bool(self.resolve_worker and self.resolve_worker.isRunning())
+        prepared = bool(self.resolved_pairs) and self._prepared_revision == "\n".join(
+            self.source_links()
+        )
         self.resolve_btn.setEnabled(
             has_links and not resolving and not self._active_download
         )
-        self.copy_btn.setEnabled(bool(self.resolved_pairs))
+        self.copy_btn.setEnabled(prepared)
         self.download_btn.setEnabled(
-            has_links and not self._active_download and not resolving
+            prepared and not self._active_download and not resolving
         )
         self.pause_resume_btn.setVisible(self._active_download)
         self.cancel_btn.setVisible(self._active_download)
@@ -818,6 +872,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.pause_resume_btn.setProperty(
             "solarIcon", "play" if self._paused else "pause"
         )
+        self.download_card.setVisible(prepared or self._active_download)
         self._refresh_solar_icons()
 
     def _set_status(self, text: str, state: str) -> None:

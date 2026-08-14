@@ -14,32 +14,10 @@ from ff_downloader.core import (
     ResolutionError,
 )
 
-_LAST_RESOLVED_INPUTS: tuple[str, ...] = ()
-_LAST_RESOLVED_URLS: dict[str, str] = {}
-
-
-def _clear_cached_resolution(links: list[str]) -> None:
-    global _LAST_RESOLVED_INPUTS, _LAST_RESOLVED_URLS
-    if _LAST_RESOLVED_INPUTS == tuple(links):
-        _LAST_RESOLVED_INPUTS = ()
-        _LAST_RESOLVED_URLS = {}
-
-
-def _remember_resolution(links: list[str], pairs: list[tuple[str, str]]) -> None:
-    global _LAST_RESOLVED_INPUTS, _LAST_RESOLVED_URLS
-    _LAST_RESOLVED_INPUTS = tuple(links)
-    _LAST_RESOLVED_URLS = dict(pairs)
-
-
-def _cached_resolution(links: list[str]) -> dict[str, str]:
-    if _LAST_RESOLVED_INPUTS != tuple(links):
-        return {}
-    return dict(_LAST_RESOLVED_URLS)
-
 
 class ResolveWorker(QtCore.QThread):
     log = QtCore.pyqtSignal(str)
-    resolved = QtCore.pyqtSignal(list)
+    completed = QtCore.pyqtSignal(list, list)
     failed = QtCore.pyqtSignal(str)
 
     def __init__(self, links: list[str], parent=None):
@@ -60,12 +38,10 @@ class ResolveWorker(QtCore.QThread):
 
     def run(self) -> None:
         resolver = FuckingFastResolver(self.log.emit)
-        _clear_cached_resolution(self.links)
         try:
-            results = resolver.resolve_many(self.links)
-            pairs = [(item.source_url, item.direct_url) for item in results]
-            _remember_resolution(self.links, pairs)
-            self.resolved.emit(pairs)
+            batch = resolver.resolve_available(self.links)
+            pairs = [(item.source_url, item.direct_url) for item in batch.links]
+            self.completed.emit(pairs, batch.failures)
         except ResolutionError as exc:
             self.failed.emit(str(exc))
         finally:
@@ -86,12 +62,12 @@ class DownloadWorker(QtCore.QThread):
         directory: Path = DOWNLOADS_DIR,
         parent=None,
         *,
-        resolved_urls: dict[str, str] | None = None,
+        resolved_links: list[tuple[str, str]] | None = None,
     ):
         super().__init__(parent)
         self.links = links
         self.directory = directory
-        self.resolved_urls = resolved_urls or _cached_resolution(links)
+        self.resolved_links = list(resolved_links or [])
         self.resolver: FuckingFastResolver | None = None
         self.engine: DownloadEngine | None = None
 
@@ -111,14 +87,15 @@ class DownloadWorker(QtCore.QThread):
         self.resolver = FuckingFastResolver(self.log.emit)
         self.engine = DownloadEngine(self.progress.emit, self.log.emit)
         try:
-            expanded = (
-                list(self.resolved_urls)
-                if self.resolved_urls
-                else self.resolver.expand_sources(self.links)
-            )
-            for index, source in enumerate(expanded):
+            prepared = self.resolved_links
+            if not prepared:
+                batch = self.resolver.resolve_available(self.links)
+                prepared = [(item.source_url, item.direct_url) for item in batch.links]
+                for source, error in batch.failures:
+                    self.failed.emit(source, error)
+
+            for index, (source, direct) in enumerate(prepared):
                 try:
-                    direct = self.resolved_urls.get(source) or self.resolver.resolve(source)
                     filename = self.engine.filename_from_link(source) or self.engine.filename_from_url(direct)
                     self.current_file.emit(filename)
                     self.log.emit(f"Downloading {filename}")
@@ -130,7 +107,7 @@ class DownloadWorker(QtCore.QThread):
                     break
                 except (ResolutionError, RequestException, OSError, RuntimeError) as exc:
                     self.failed.emit(source, str(exc))
-                if index + 1 < len(expanded):
+                if index + 1 < len(prepared):
                     time.sleep(BETWEEN_LINK_DELAY)
         except ResolutionError as exc:
             self.failed.emit("", str(exc))
