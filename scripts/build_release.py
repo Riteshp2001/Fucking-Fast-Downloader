@@ -73,6 +73,8 @@ def build_bundle(root: Path, work_root: Path) -> Path:
         "tkinter",
         "--collect-all",
         "camoufox",
+        "--collect-all",
+        "apify_fingerprint_datapoints",
         "--copy-metadata",
         "camoufox",
         "--add-data",
