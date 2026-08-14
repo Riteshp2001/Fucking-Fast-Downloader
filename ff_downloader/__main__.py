@@ -4,6 +4,7 @@ import sys
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 from ff_downloader.ui import MainWindow
+from ff_downloader.ui.brand_assets import application_icon
 
 
 def _configure_high_dpi() -> None:
@@ -24,6 +25,7 @@ def main() -> int:
     app.setApplicationName("Fucking Fast Downloader")
     app.setOrganizationName("Riteshp2001")
     app.setFont(QtGui.QFont("Segoe UI", 10))
+    app.setWindowIcon(application_icon())
     window = MainWindow()
     window.show()
     return app.exec_()

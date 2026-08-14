@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import platform
 import shutil
 import subprocess
@@ -16,6 +17,8 @@ from ff_downloader.config import APP_VERSION
 APP_BASENAME = "FuckingFastDownloader"
 APP_DISPLAY_NAME = "Fucking Fast Downloader"
 PACKAGE_NAME = "fucking-fast-downloader"
+APP_ASSETS_DIR = ROOT / "ff_downloader" / "ui" / "assets"
+WINDOWS_ICON = APP_ASSETS_DIR / "ffdownloader-mark.ico"
 
 
 def normalize_arch(machine: str) -> str:
@@ -72,6 +75,8 @@ def build_bundle(root: Path, work_root: Path) -> Path:
         "camoufox",
         "--copy-metadata",
         "camoufox",
+        "--add-data",
+        f"{APP_ASSETS_DIR}{os.pathsep}ff_downloader/ui/assets",
         "--name",
         APP_BASENAME,
         "--distpath",
@@ -82,6 +87,8 @@ def build_bundle(root: Path, work_root: Path) -> Path:
         str(spec_dir),
         str(root / "main.py"),
     ]
+    if platform.system() == "Windows":
+        command[3:3] = ["--icon", str(WINDOWS_ICON)]
     subprocess.run(command, cwd=root, check=True)
 
     if platform.system() == "Darwin":
@@ -232,6 +239,7 @@ def build_nsis_windows_installer(
             f"/DAPP_VERSION={version.removeprefix('v')}",
             f"/DAPP_BASENAME={APP_BASENAME}",
             f"/DAPP_DISPLAY_NAME={APP_DISPLAY_NAME}",
+            f"/DAPP_ICON={WINDOWS_ICON.resolve()}",
             f"/DBUNDLE_DIR={bundle.resolve()}",
             f"/DOUTPUT_FILE={installer.resolve()}",
             str(nsis_script),

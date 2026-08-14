@@ -9,6 +9,7 @@ from urllib.parse import unquote, urlparse
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 from ff_downloader.config import APP_NAME, APP_VERSION, DOWNLOADS_DIR
+from ff_downloader.ui.brand_assets import application_icon, brand_mark
 from ff_downloader.ui.solar_icons import SolarIconFactory
 from ff_downloader.workers import DownloadWorker, ResolveWorker
 
@@ -35,6 +36,8 @@ class TitleBar(QtWidgets.QFrame):
         layout.setSpacing(8)
 
         self.brand_icon = QtWidgets.QLabel()
+        self.brand_icon.setFixedSize(26, 26)
+        self.brand_icon.setAlignment(QtCore.Qt.AlignCenter)
         layout.addWidget(self.brand_icon)
 
         brand = QtWidgets.QLabel(APP_NAME)
@@ -76,9 +79,7 @@ class TitleBar(QtWidgets.QFrame):
 
     def apply_theme(self, text: str, muted: str, accent: str, dark: bool) -> None:
         self._icon_color = muted
-        self.brand_icon.setPixmap(
-            SolarIconFactory.icon("download", accent, 18).pixmap(18, 18)
-        )
+        self.brand_icon.setPixmap(brand_mark(24))
         self.theme_button.setProperty("solarIcon", "sun" if dark else "moon")
         self.theme_button.setToolTip(
             "Switch to light mode" if dark else "Switch to dark mode"
@@ -188,6 +189,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle(f"{APP_NAME} {APP_VERSION}")
+        self.setWindowIcon(application_icon())
         self.setWindowFlags(
             QtCore.Qt.FramelessWindowHint
             | QtCore.Qt.Window

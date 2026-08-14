@@ -19,6 +19,9 @@ RequestExecutionLevel user
 !ifndef OUTPUT_FILE
 !error "OUTPUT_FILE must be defined"
 !endif
+!ifndef APP_ICON
+!error "APP_ICON must be defined"
+!endif
 
 Name "${APP_DISPLAY_NAME}"
 OutFile "${OUTPUT_FILE}"
@@ -26,6 +29,8 @@ InstallDir "$LOCALAPPDATA\Programs\${APP_DISPLAY_NAME}"
 InstallDirRegKey HKCU "Software\${APP_DISPLAY_NAME}" "InstallLocation"
 
 !define MUI_ABORTWARNING
+!define MUI_ICON "${APP_ICON}"
+!define MUI_UNICON "${APP_ICON}"
 !insertmacro MUI_PAGE_WELCOME
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_INSTFILES
