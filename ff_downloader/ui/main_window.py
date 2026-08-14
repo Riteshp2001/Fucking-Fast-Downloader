@@ -4,6 +4,7 @@ import re
 import typing
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import unquote, urlparse
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 
@@ -192,8 +193,8 @@ class MainWindow(QtWidgets.QMainWindow):
             | QtCore.Qt.Window
             | QtCore.Qt.WindowMinimizeButtonHint
         )
-        self.resize(1160, 820)
-        self.setMinimumSize(840, 650)
+        self.resize(1160, 740)
+        self.setMinimumSize(840, 590)
 
         self.settings = QtCore.QSettings("Riteshp2001", APP_NAME)
         saved_theme = str(self.settings.value("theme", "light"))
@@ -315,18 +316,18 @@ class MainWindow(QtWidgets.QMainWindow):
         shell.addWidget(resize_frame, 1)
 
         body = QtWidgets.QVBoxLayout(content)
-        body.setContentsMargins(30, 24, 30, 18)
-        body.setSpacing(12)
+        body.setContentsMargins(30, 22, 30, 16)
+        body.setSpacing(14)
 
         hero = QtWidgets.QHBoxLayout()
         hero_text = QtWidgets.QVBoxLayout()
         hero_text.setSpacing(4)
-        eyebrow = QtWidgets.QLabel("YOUR DOWNLOADS")
+        eyebrow = QtWidgets.QLabel("DOWNLOAD MANAGER")
         eyebrow.setObjectName("eyebrow")
-        title = QtWidgets.QLabel("Downloads")
+        title = QtWidgets.QLabel("Download files")
         title.setObjectName("appTitle")
         subtitle = QtWidgets.QLabel(
-            "Paste links, prepare the queue, then download what is ready."
+            "Paste your links, prepare the queue, and download when you are ready."
         )
         subtitle.setObjectName("subtitle")
         subtitle.setWordWrap(True)
@@ -339,19 +340,21 @@ class MainWindow(QtWidgets.QMainWindow):
         hero.addWidget(self.folder_btn, 0, QtCore.Qt.AlignBottom)
         body.addLayout(hero)
 
-        self.link_splitter = QtWidgets.QSplitter(QtCore.Qt.Vertical)
+        self.link_splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
         self.link_splitter.setChildrenCollapsible(False)
-        self.link_splitter.setHandleWidth(1)
+        self.link_splitter.setHandleWidth(16)
+        self.link_splitter.setMinimumHeight(270)
+        self.link_splitter.setMaximumHeight(320)
 
         source_card = QtWidgets.QFrame()
         source_card.setObjectName("card")
         source_layout = QtWidgets.QVBoxLayout(source_card)
-        source_layout.setContentsMargins(18, 16, 18, 16)
-        source_layout.setSpacing(12)
+        source_layout.setContentsMargins(18, 14, 18, 14)
+        source_layout.setSpacing(8)
         source_layout.addLayout(
             self._section_heading(
                 "paste",
-                "1. Add links",
+                "Paste links",
                 "One URL per line. Duplicates are ignored.",
             )
         )
@@ -361,8 +364,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.link_input.setPlaceholderText(
             "Paste public share or direct download URLs here…"
         )
-        self.link_input.setMinimumHeight(142)
-        self.link_input.setMaximumHeight(180)
+        self.link_input.setMinimumHeight(130)
         source_layout.addWidget(self.link_input, 1)
 
         source_footer = QtWidgets.QHBoxLayout()
@@ -388,8 +390,8 @@ class MainWindow(QtWidgets.QMainWindow):
         resolved_head.addLayout(
             self._section_heading(
                 "link",
-                "2. Review queue",
-                "Files appear here when they are ready.",
+                "Download queue",
+                "Prepared files appear here.",
             ),
             1,
         )
@@ -402,7 +404,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.resolved_list = QtWidgets.QTreeWidget()
         self.resolved_list.setObjectName("resolvedList")
-        self.resolved_list.setHeaderLabels(["Source", "Prepared download"])
+        self.resolved_list.setHeaderLabels(["File", "Status"])
         self.resolved_list.setRootIsDecorated(False)
         self.resolved_list.setAlternatingRowColors(False)
         self.resolved_list.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
@@ -411,38 +413,34 @@ class MainWindow(QtWidgets.QMainWindow):
         self.resolved_list.header().setSectionResizeMode(
             0, QtWidgets.QHeaderView.ResizeToContents
         )
-        self.resolved_list.setMinimumHeight(72)
-        self.resolved_list.setMaximumHeight(172)
         self.resolve_empty = QtWidgets.QLabel(
             "Paste a link above to build your download queue."
         )
         self.resolve_empty.setObjectName("emptyState")
         self.resolve_empty.setAlignment(QtCore.Qt.AlignCenter)
         self.resolve_empty.setWordWrap(True)
-        self.resolve_empty.setMinimumHeight(64)
         self.queue_stack = QtWidgets.QStackedWidget()
         self.queue_stack.addWidget(self.resolve_empty)
         self.queue_stack.addWidget(self.resolved_list)
-        self.queue_stack.setMaximumHeight(172)
         resolved_layout.addWidget(self.queue_stack)
         self.link_splitter.addWidget(resolved_card)
-        self.link_splitter.setStretchFactor(0, 3)
+        self.link_splitter.setStretchFactor(0, 1)
         self.link_splitter.setStretchFactor(1, 1)
-        self.link_splitter.setSizes([270, 128])
-        body.addWidget(self.link_splitter, 0)
+        self.link_splitter.setSizes([560, 560])
+        body.addWidget(self.link_splitter, 1)
 
         activity = QtWidgets.QFrame()
         activity.setObjectName("card")
         activity_layout = QtWidgets.QVBoxLayout(activity)
-        activity_layout.setContentsMargins(18, 16, 18, 16)
-        activity_layout.setSpacing(12)
+        activity_layout.setContentsMargins(18, 14, 18, 14)
+        activity_layout.setSpacing(8)
 
         activity_head = QtWidgets.QHBoxLayout()
         activity_head.addLayout(
             self._section_heading(
                 "download",
-                "3. Download",
-                "Save the prepared queue to the selected folder.",
+                "Download",
+                "Save the queue to your selected folder.",
             ),
             1,
         )
@@ -451,17 +449,17 @@ class MainWindow(QtWidgets.QMainWindow):
         activity_head.addWidget(self.state_pill, 0, QtCore.Qt.AlignTop)
         activity_layout.addLayout(activity_head)
 
-        file_row = QtWidgets.QHBoxLayout()
-        self.file_label = QtWidgets.QLabel("No active download")
+        status_row = QtWidgets.QHBoxLayout()
+        self.file_label = QtWidgets.QLabel("Prepare a link to enable downloading")
         self.file_label.setObjectName("fileName")
         self.file_label.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
         self.path_label = QtWidgets.QLabel(str(self.download_dir))
         self.path_label.setObjectName("pathLabel")
         self.path_label.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
         self.path_label.setToolTip(str(self.download_dir))
-        file_row.addWidget(self.file_label, 1)
-        file_row.addWidget(self.path_label, 0)
-        activity_layout.addLayout(file_row)
+        status_row.addWidget(self.file_label, 1)
+        status_row.addWidget(self.path_label, 0)
+        activity_layout.addLayout(status_row)
 
         self.progress = QtWidgets.QProgressBar()
         self.progress.setRange(0, 1000)
@@ -469,26 +467,22 @@ class MainWindow(QtWidgets.QMainWindow):
         self.progress.setFixedHeight(9)
         activity_layout.addWidget(self.progress)
 
-        transfer_details = QtWidgets.QHBoxLayout()
+        action_row = QtWidgets.QHBoxLayout()
         self.progress_value = QtWidgets.QLabel("0% complete")
         self.progress_value.setObjectName("transferDetail")
         self.speed_value = QtWidgets.QLabel("0 MB/s")
         self.speed_value.setObjectName("transferDetail")
         self.size_value = QtWidgets.QLabel("0 / 0 MB")
         self.size_value.setObjectName("transferDetail")
-        transfer_details.addWidget(self.progress_value)
-        transfer_details.addWidget(self.speed_value)
-        transfer_details.addWidget(self.size_value)
-        transfer_details.addStretch(1)
-        activity_layout.addLayout(transfer_details)
-
-        action_row = QtWidgets.QHBoxLayout()
+        action_row.addWidget(self.progress_value)
+        action_row.addWidget(self.speed_value)
+        action_row.addWidget(self.size_value)
+        action_row.addStretch(1)
         self.details_btn = self._button("Details", "document", compact=True)
         self.pause_resume_btn = self._button("Pause", "pause", compact=True)
         self.cancel_btn = self._button("Cancel", "stop", compact=True)
         self.download_btn = self._button("Download ready files", "download", primary=True)
         action_row.addWidget(self.details_btn)
-        action_row.addStretch(1)
         action_row.addWidget(self.pause_resume_btn)
         action_row.addWidget(self.cancel_btn)
         action_row.addWidget(self.download_btn)
@@ -501,7 +495,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.log_view.setVisible(False)
         activity_layout.addWidget(self.log_view)
         self.download_card = activity
-        self.download_card.setVisible(False)
+        self.download_card.setVisible(True)
         body.addWidget(self.download_card)
 
         footer = QtWidgets.QHBoxLayout()
@@ -653,6 +647,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.resolved_count.setText("Waiting" if not links else "Not resolved")
             self.resolve_empty.setText("Paste a link above to build your download queue.")
             self.queue_stack.setCurrentWidget(self.resolve_empty)
+            self.file_label.setText("Prepare a link to enable downloading")
         self._sync_actions()
 
     def _auto_resolve_after_paste(self) -> None:
@@ -693,6 +688,7 @@ class MainWindow(QtWidgets.QMainWindow):
         )
         self.queue_stack.setCurrentWidget(self.resolve_empty)
         self._set_status("Resolve failed", "ERROR")
+        self.file_label.setText("No files are ready to download")
         self.log(f"Resolve failed: {error}")
         self._sync_actions()
 
@@ -705,14 +701,14 @@ class MainWindow(QtWidgets.QMainWindow):
         self._prepared_revision = self._resolve_revision
         self.resolved_list.clear()
         for source, direct in self.resolved_pairs:
-            item = QtWidgets.QTreeWidgetItem([self._short_url(source), direct])
+            item = QtWidgets.QTreeWidgetItem([self._queue_label(source), "Ready"])
             item.setData(0, QtCore.Qt.UserRole, source)
             item.setData(1, QtCore.Qt.UserRole, direct)
             item.setToolTip(0, source)
             item.setToolTip(1, direct)
             self.resolved_list.addTopLevelItem(item)
         for source, error in self.resolution_failures:
-            item = QtWidgets.QTreeWidgetItem([self._short_url(source), f"Needs attention — {error}"])
+            item = QtWidgets.QTreeWidgetItem([self._queue_label(source), "Needs attention"])
             item.setData(0, QtCore.Qt.UserRole, source)
             item.setToolTip(0, source)
             item.setToolTip(1, error)
@@ -728,14 +724,27 @@ class MainWindow(QtWidgets.QMainWindow):
             if failed:
                 status += f"; {failed} need attention"
             self._set_status(status, "READY")
+            self.file_label.setText(
+                f"{count} file ready to download" if count == 1 else f"{count} files ready to download"
+            )
         else:
             self._set_status("No downloads could be prepared", "ERROR")
+            self.file_label.setText("No files are ready to download")
         self.log(f"Prepared {count} direct link(s); {failed} need attention")
         self._sync_actions()
 
     @staticmethod
     def _short_url(url: str) -> str:
         return url if len(url) <= 54 else f"{url[:26]}…{url[-24:]}"
+
+    @classmethod
+    def _queue_label(cls, url: str) -> str:
+        parsed = urlparse(url)
+        fragment = unquote(parsed.fragment).strip()
+        if fragment:
+            return fragment
+        filename = unquote(Path(parsed.path).name).strip()
+        return filename or cls._short_url(url)
 
     def copy_resolved_links(self) -> None:
         if not self.resolved_pairs:
@@ -872,7 +881,6 @@ class MainWindow(QtWidgets.QMainWindow):
         self.pause_resume_btn.setProperty(
             "solarIcon", "play" if self._paused else "pause"
         )
-        self.download_card.setVisible(prepared or self._active_download)
         self._refresh_solar_icons()
 
     def _set_status(self, text: str, state: str) -> None:

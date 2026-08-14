@@ -4,7 +4,7 @@ import os
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PyQt5 import QtWidgets
+from PyQt5 import QtCore, QtWidgets
 
 from ff_downloader.ui import main_window
 
@@ -50,13 +50,65 @@ def test_title_bar_uses_distinct_standard_window_control_icons() -> None:
     app.processEvents()
 
 
-def test_empty_window_shows_a_compact_linear_download_flow() -> None:
+def test_empty_window_keeps_a_compact_download_dock_visible() -> None:
     app = _application()
     window = main_window.MainWindow()
 
     assert window.queue_stack.currentWidget() is window.resolve_empty
-    assert window.download_card.isHidden()
-    assert window.link_input.minimumHeight() <= 180
+    assert not window.download_card.isHidden()
+    assert window.link_input.minimumHeight() >= 120
+
+    window.close()
+    app.processEvents()
+
+
+def test_workspace_uses_readable_file_queue_instead_of_raw_direct_urls() -> None:
+    app = _application()
+    window = main_window.MainWindow()
+
+    assert window.link_splitter.orientation() == QtCore.Qt.Horizontal
+    assert [window.resolved_list.headerItem().text(column) for column in range(2)] == [
+        "File",
+        "Status",
+    ]
+
+    window.close()
+    app.processEvents()
+
+
+def test_prepared_queue_shows_a_file_name_and_status(monkeypatch) -> None:
+    app = _application()
+    window = main_window.MainWindow()
+    source = "https://fuckingfast.co/example-file#example.bin"
+    direct = "https://dl.fuckingfast.co/download/a-very-long-temporary-url"
+    monkeypatch.setattr(window, "source_links", lambda: [source])
+    window._resolve_revision = source
+
+    window._show_resolution([(source, direct)], [])
+
+    item = window.resolved_list.topLevelItem(0)
+    assert item.text(0) == "example.bin"
+    assert item.text(1) == "Ready"
+    assert direct not in (item.text(0), item.text(1))
+
+    window.close()
+    app.processEvents()
+
+
+def test_workspace_stays_usable_at_a_compact_desktop_height(monkeypatch) -> None:
+    app = _application()
+    window = main_window.MainWindow()
+    source = "https://fuckingfast.co/example-file#example.bin"
+    monkeypatch.setattr(window, "source_links", lambda: [source])
+    window._resolve_revision = source
+    window._show_resolution([(source, "https://dl.fuckingfast.co/download/fresh")], [])
+    window.resize(1366, 660)
+    window.show()
+    app.processEvents()
+
+    assert window.link_input.height() >= 120
+    assert window.resolved_list.viewport().height() >= 100
+    assert window.download_card.height() <= 190
 
     window.close()
     app.processEvents()

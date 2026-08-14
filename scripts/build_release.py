@@ -136,6 +136,22 @@ def archive_bundle(bundle: Path, output_dir: Path, version: str) -> Path:
     return archive
 
 
+def _find_nsis() -> str:
+    found = shutil.which("makensis") or shutil.which("makensis.exe")
+    if found:
+        return found
+    candidates = [
+        Path(r"C:\Program Files (x86)\NSIS\makensis.exe"),
+        Path(r"C:\Program Files\NSIS\makensis.exe"),
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return str(candidate)
+    raise FileNotFoundError(
+        "NSIS (makensis.exe) is required for the Windows installer"
+    )
+
+
 def _find_inno_setup() -> str:
     found = shutil.which("ISCC") or shutil.which("iscc")
     if found:
@@ -148,7 +164,7 @@ def _find_inno_setup() -> str:
         if candidate.exists():
             return str(candidate)
     raise FileNotFoundError(
-        "Inno Setup 6 (ISCC.exe) is required for the Windows installer"
+        "Inno Setup 6 (ISCC.exe) is required for the legacy installer"
     )
 
 
@@ -195,6 +211,33 @@ Filename: "{{app}}\\{APP_BASENAME}.exe"; Description: "Launch {APP_DISPLAY_NAME}
 '''
     inno_script.write_text(script, encoding="utf-8")
     subprocess.run([_find_inno_setup(), str(inno_script)], check=True)
+    _verify_artifact(installer)
+    return installer
+
+
+def build_nsis_windows_installer(
+    bundle: Path, output_dir: Path, _work_root: Path, version: str
+) -> Path:
+    stem = artifact_stem(version)
+    installer = output_dir / f"{stem}-setup.exe"
+    installer.unlink(missing_ok=True)
+
+    nsis_script = ROOT / "scripts" / "installer.nsi"
+    if not nsis_script.exists():
+        raise FileNotFoundError(f"NSIS installer script was not found: {nsis_script}")
+
+    subprocess.run(
+        [
+            _find_nsis(),
+            f"/DAPP_VERSION={version.removeprefix('v')}",
+            f"/DAPP_BASENAME={APP_BASENAME}",
+            f"/DAPP_DISPLAY_NAME={APP_DISPLAY_NAME}",
+            f"/DBUNDLE_DIR={bundle.resolve()}",
+            f"/DOUTPUT_FILE={installer.resolve()}",
+            str(nsis_script),
+        ],
+        check=True,
+    )
     _verify_artifact(installer)
     return installer
 
@@ -321,7 +364,7 @@ def build_native_installer(
 ) -> Path:
     system = platform.system()
     if system == "Windows":
-        return build_windows_installer(bundle, output_dir, work_root, version)
+        return build_nsis_windows_installer(bundle, output_dir, work_root, version)
     if system == "Linux":
         return build_linux_installer(bundle, output_dir, work_root, version)
     if system == "Darwin":

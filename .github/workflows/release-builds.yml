@@ -138,10 +138,10 @@ jobs:
           python -m pip install -r requirements-dev.txt
           python -m pip check
 
-      - name: Install Inno Setup
+      - name: Install NSIS
         if: runner.os == 'Windows'
         shell: pwsh
-        run: choco install innosetup --no-progress -y
+        run: choco install nsis --no-progress -y
 
       - name: Build portable app and native installer
         run: python scripts/build_release.py --output release
