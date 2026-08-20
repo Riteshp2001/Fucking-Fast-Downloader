@@ -24,6 +24,7 @@ python -m venv .venv
 # Windows: .venv\Scripts\activate
 # Linux/macOS: source .venv/bin/activate
 pip install -r requirements.txt
+camoufox fetch        # one-time ~660 MB browser download, required for share-link resolution
 python main.py
 ```
 
