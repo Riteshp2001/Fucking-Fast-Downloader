@@ -8,6 +8,7 @@ from collections.abc import Callable
 from urllib.parse import urlparse
 
 from camoufox.async_api import AsyncCamoufox
+from camoufox.pkgman import CamoufoxNotInstalled, camoufox_path
 
 from ff_downloader.config import (
     BROWSER_PROFILE_DIR,
@@ -63,8 +64,20 @@ class HeadlessBrowserResolver:
 
     # --------------------------------------------------------------- browser
 
+    def _ensure_browser_installed(self) -> None:
+        try:
+            camoufox_path(download_if_missing=False)
+        except CamoufoxNotInstalled:
+            self.log(
+                "First run: downloading the Camoufox browser (~660 MB). "
+                "This happens once and may take a few minutes…"
+            )
+            camoufox_path()
+            self.log("Camoufox browser ready.")
+
     async def _ensure_browser(self):
         if self._browser is None:
+            self._ensure_browser_installed()
             self.log("Opening a browser window to prepare the download…")
             os.makedirs(BROWSER_PROFILE_DIR, exist_ok=True)
             self._camoufox = AsyncCamoufox(
@@ -75,7 +88,14 @@ class HeadlessBrowserResolver:
                 humanize=True,
                 window=(1280, 720),
             )
-            self._browser = await self._camoufox.__aenter__()
+            try:
+                self._browser = await self._camoufox.__aenter__()
+            except Exception as exc:
+                self.log(f"Could not start the browser: {exc}")
+                raise ResolutionError(
+                    "Could not start the Camoufox browser. Run `camoufox fetch` and try "
+                    "again, or check your internet connection."
+                ) from exc
             self._page = await self._browser.new_page()
         return self._page
 
