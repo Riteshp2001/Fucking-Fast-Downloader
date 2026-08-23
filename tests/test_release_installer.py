@@ -59,7 +59,7 @@ def test_bundle_collects_language_tags_data(monkeypatch, tmp_path) -> None:
         dist_dir = Path(command[command.index("--distpath") + 1])
         (dist_dir / build_release.APP_BASENAME).mkdir()
 
-    monkeypatch.setattr(build_release.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(build_release.platform, "system", lambda: "Windows")
     monkeypatch.setattr(build_release.subprocess, "run", run)
 
     build_release.build_bundle(ROOT, tmp_path / "build")
