@@ -75,6 +75,8 @@ def build_bundle(root: Path, work_root: Path) -> Path:
         "camoufox",
         "--collect-all",
         "apify_fingerprint_datapoints",
+        "--collect-all",
+        "language_tags",
         "--copy-metadata",
         "camoufox",
         "--add-data",
