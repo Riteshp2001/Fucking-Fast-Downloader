@@ -51,6 +51,25 @@ def test_bundle_collects_fingerprint_datapoints(monkeypatch, tmp_path) -> None:
     )
 
 
+def test_bundle_collects_language_tags_data(monkeypatch, tmp_path) -> None:
+    captured: list[str] = []
+
+    def run(command: list[str], cwd: Path, check: bool) -> None:
+        captured.extend(command)
+        dist_dir = Path(command[command.index("--distpath") + 1])
+        (dist_dir / build_release.APP_BASENAME).mkdir()
+
+    monkeypatch.setattr(build_release.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(build_release.subprocess, "run", run)
+
+    build_release.build_bundle(ROOT, tmp_path / "build")
+
+    assert any(
+        option == "--collect-all" and package == "language_tags"
+        for option, package in pairwise(captured)
+    )
+
+
 def test_nsis_builder_passes_bundle_and_output_to_makensis(monkeypatch, tmp_path) -> None:
     bundle = tmp_path / "FuckingFastDownloader"
     bundle.mkdir()
