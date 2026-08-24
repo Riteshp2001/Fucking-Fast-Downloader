@@ -1,6 +1,6 @@
 [project]
 name = "fucking-fast-downloader"
-version = "2.1.0"
+version = "2.1.1"
 description = "PyQt desktop downloader for public FuckingFast share links"
 requires-python = ">=3.10"
 dependencies = [
