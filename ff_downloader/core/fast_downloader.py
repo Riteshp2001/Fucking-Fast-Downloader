@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import io
-import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
-import requests
+
 import camoufox.pkgman as pkgman
+import requests
 
 
 def patch_camoufox_fast_download(num_threads: int = 16) -> None:
@@ -33,7 +33,9 @@ def patch_camoufox_fast_download(num_threads: int = 16) -> None:
             total_size = int(head.headers.get("content-length", 0))
         except Exception:
             if original_webdl:
-                return original_webdl(url, desc=desc, buffer=buffer, bar=bar, progress_callback=progress_callback)
+                return original_webdl(
+                    url, desc=desc, buffer=buffer, bar=bar, progress_callback=progress_callback
+                )
             raise
 
         if buffer is None:
@@ -41,7 +43,9 @@ def patch_camoufox_fast_download(num_threads: int = 16) -> None:
 
         if total_size < 5 * 1024 * 1024 or head.headers.get("Accept-Ranges") != "bytes":
             if original_webdl:
-                return original_webdl(url, desc=desc, buffer=buffer, bar=bar, progress_callback=progress_callback)
+                return original_webdl(
+                    url, desc=desc, buffer=buffer, bar=bar, progress_callback=progress_callback
+                )
 
         chunk_size = total_size // num_threads
         ranges = []
@@ -51,7 +55,6 @@ def patch_camoufox_fast_download(num_threads: int = 16) -> None:
             ranges.append((start, end, i))
 
         parts: list[bytes | None] = [None] * num_threads
-        downloaded_bytes = 0
 
         def download_range(start: int, end: int, index: int) -> tuple[int, bytes]:
             req_headers = dict(headers)

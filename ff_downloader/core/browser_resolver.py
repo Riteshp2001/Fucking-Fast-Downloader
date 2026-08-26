@@ -213,7 +213,9 @@ class HeadlessBrowserResolver:
             else:
                 has_widget = False
                 try:
-                    has_widget = bool(await page.evaluate("() => !!document.getElementById('cf-turnstile')"))
+                    has_widget = bool(
+                        await page.evaluate("() => !!document.getElementById('cf-turnstile')")
+                    )
                 except Exception:
                     pass
 
@@ -232,7 +234,9 @@ class HeadlessBrowserResolver:
                     elif result.get("redirect"):
                         return result["redirect"]
                     else:
-                        last_error = f"No HX-Redirect ({result.get('body') or result.get('status')})"
+                        last_error = (
+                            f"No HX-Redirect ({result.get('body') or result.get('status')})"
+                        )
 
             if attempt < BROWSER_RESOLVE_ATTEMPTS:
                 self.log(f"Retrying link ({attempt + 1}/{BROWSER_RESOLVE_ATTEMPTS}) — {last_error}")
