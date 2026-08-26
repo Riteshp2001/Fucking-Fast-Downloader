@@ -19,6 +19,7 @@ from ff_downloader.config import (
     TURNSTILE_WAIT_SECS,
 )
 from ff_downloader.core.errors import ResolutionError
+from ff_downloader.core.fast_downloader import patch_camoufox_fast_download
 
 LogFn = Callable[[str], None]
 
@@ -32,6 +33,7 @@ class HeadlessBrowserResolver:
     """
 
     def __init__(self, log: LogFn | None = None):
+        patch_camoufox_fast_download()
         self.log = log or (lambda _message: None)
         self._loop: asyncio.AbstractEventLoop | None = None
         self._loop_thread: threading.Thread | None = None
@@ -211,7 +213,9 @@ class HeadlessBrowserResolver:
             else:
                 has_widget = False
                 try:
-                    has_widget = bool(await page.evaluate("() => !!document.getElementById('cf-turnstile')"))
+                    has_widget = bool(
+                        await page.evaluate("() => !!document.getElementById('cf-turnstile')")
+                    )
                 except Exception:
                     pass
 
@@ -230,7 +234,9 @@ class HeadlessBrowserResolver:
                     elif result.get("redirect"):
                         return result["redirect"]
                     else:
-                        last_error = f"No HX-Redirect ({result.get('body') or result.get('status')})"
+                        last_error = (
+                            f"No HX-Redirect ({result.get('body') or result.get('status')})"
+                        )
 
             if attempt < BROWSER_RESOLVE_ATTEMPTS:
                 self.log(f"Retrying link ({attempt + 1}/{BROWSER_RESOLVE_ATTEMPTS}) — {last_error}")
