@@ -19,6 +19,7 @@ from ff_downloader.config import (
     TURNSTILE_WAIT_SECS,
 )
 from ff_downloader.core.errors import ResolutionError
+from ff_downloader.core.fast_downloader import patch_camoufox_fast_download
 
 LogFn = Callable[[str], None]
 
@@ -32,6 +33,7 @@ class HeadlessBrowserResolver:
     """
 
     def __init__(self, log: LogFn | None = None):
+        patch_camoufox_fast_download()
         self.log = log or (lambda _message: None)
         self._loop: asyncio.AbstractEventLoop | None = None
         self._loop_thread: threading.Thread | None = None
