@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import subprocess
 from itertools import pairwise
 from pathlib import Path
+
+import pytest
 
 from scripts import build_release
 
@@ -95,3 +98,48 @@ def test_nsis_builder_passes_bundle_and_output_to_makensis(monkeypatch, tmp_path
     assert "makensis" in captured
     assert any(item.startswith("/DBUNDLE_DIR=") for item in captured)
     assert any(item.startswith("/DOUTPUT_FILE=") for item in captured)
+
+
+def test_macos_installer_retries_resource_busy(monkeypatch, tmp_path) -> None:
+    bundle = tmp_path / "app.app"
+    bundle.mkdir()
+    attempts = []
+    delays = []
+
+    def run(command, **kwargs):
+        attempts.append(command)
+        if len(attempts) < 3:
+            Path(command[-1]).write_bytes(b"partial")
+            raise subprocess.CalledProcessError(1, command, stderr="hdiutil: Resource busy\n")
+        assert not Path(command[-1]).exists()
+        Path(command[-1]).write_bytes(b"installer")
+
+    monkeypatch.setattr(Path, "symlink_to", lambda *args: None)
+    monkeypatch.setattr(build_release.subprocess, "run", run)
+    monkeypatch.setattr(build_release.time, "sleep", delays.append)
+    monkeypatch.setattr(build_release.platform, "system", lambda: "Darwin")
+
+    installer = build_release.build_macos_installer(bundle, tmp_path, tmp_path, "2.2.0")
+
+    assert installer.read_bytes() == b"installer"
+    assert len(attempts) == 3
+    assert delays == [2, 4]
+
+
+def test_macos_installer_does_not_retry_other_errors(monkeypatch, tmp_path) -> None:
+    bundle = tmp_path / "app.app"
+    bundle.mkdir()
+    attempts = []
+
+    def run(command, **kwargs):
+        attempts.append(command)
+        raise subprocess.CalledProcessError(1, command, stderr="permission denied\n")
+
+    monkeypatch.setattr(Path, "symlink_to", lambda *args: None)
+    monkeypatch.setattr(build_release.subprocess, "run", run)
+    monkeypatch.setattr(build_release.platform, "system", lambda: "Darwin")
+
+    with pytest.raises(subprocess.CalledProcessError):
+        build_release.build_macos_installer(bundle, tmp_path, tmp_path, "2.2.0")
+
+    assert len(attempts) == 1

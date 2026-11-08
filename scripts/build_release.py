@@ -6,6 +6,7 @@ import platform
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -351,22 +352,29 @@ def build_macos_installer(
     (staging / "Applications").symlink_to("/Applications")
 
     installer = output_dir / f"{artifact_stem(version)}.dmg"
-    installer.unlink(missing_ok=True)
-    subprocess.run(
-        [
-            "hdiutil",
-            "create",
-            "-volname",
-            APP_DISPLAY_NAME,
-            "-srcfolder",
-            str(staging),
-            "-ov",
-            "-format",
-            "UDZO",
-            str(installer),
-        ],
-        check=True,
-    )
+    command = [
+        "hdiutil",
+        "create",
+        "-volname",
+        APP_DISPLAY_NAME,
+        "-srcfolder",
+        str(staging),
+        "-ov",
+        "-format",
+        "UDZO",
+        str(installer),
+    ]
+    for attempt in range(3):
+        installer.unlink(missing_ok=True)
+        try:
+            subprocess.run(command, check=True, capture_output=True, text=True)
+            break
+        except subprocess.CalledProcessError as error:
+            if error.stderr:
+                print(error.stderr, file=sys.stderr, end="")
+            if attempt == 2 or "resource busy" not in (error.stderr or "").lower():
+                raise
+            time.sleep(2 ** (attempt + 1))
     _verify_artifact(installer)
     return installer
 
