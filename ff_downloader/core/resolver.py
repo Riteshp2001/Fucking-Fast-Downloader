@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-import time
+import threading
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from html import unescape
@@ -16,6 +16,7 @@ from ff_downloader.core.browser_resolver import HeadlessBrowserResolver
 from ff_downloader.core.errors import ResolutionError
 
 LogFn = Callable[[str], None]
+SOURCE_PAGE_HOSTS = {"fitgirl-repacks.site", "www.fitgirl-repacks.site"}
 
 
 @dataclass(frozen=True)
@@ -36,9 +37,13 @@ class FuckingFastResolver:
     """Resolve public FuckingFast share URLs through the site's HTMX flow,
     using a headless Chrome session to pass Cloudflare / Turnstile."""
 
-    def __init__(self, log: LogFn | None = None):
+    def __init__(self, log: LogFn | None = None, stop: threading.Event | None = None):
         self.log = log or (lambda _message: None)
-        self._browser = HeadlessBrowserResolver(self.log)
+        self._stop = stop or threading.Event()
+        self._browser = HeadlessBrowserResolver(self.log, self._stop)
+
+    def cancel(self) -> None:
+        self._stop.set()
 
     @staticmethod
     def _file_id(link: str) -> str:
@@ -55,9 +60,13 @@ class FuckingFastResolver:
         return path
 
     @staticmethod
-    def _is_direct_link(link: str) -> bool:
+    def is_direct_link(link: str) -> bool:
         parsed = urlparse(link.strip())
         return parsed.scheme in {"http", "https"} and parsed.hostname == "dl.fuckingfast.co"
+
+    @staticmethod
+    def is_source_page(link: str) -> bool:
+        return urlparse(link.strip()).netloc in SOURCE_PAGE_HOSTS
 
     @staticmethod
     def _is_share_link(link: str) -> bool:
@@ -104,7 +113,7 @@ class FuckingFastResolver:
             link = raw.strip().strip('"').strip("'")
             if not link:
                 continue
-            if urlparse(link).netloc in {"fitgirl-repacks.site", "www.fitgirl-repacks.site"}:
+            if self.is_source_page(link):
                 expanded.extend(self.extract_fitgirl_links(link))
             else:
                 expanded.append(link)
@@ -112,24 +121,63 @@ class FuckingFastResolver:
 
     def resolve(self, link: str) -> str:
         link = link.strip()
-        if self._is_direct_link(link):
+        if self.is_direct_link(link):
             return link
         self._file_id(link)
         return self._browser.resolve(link)
 
-    def resolve_available(self, links: Iterable[str]) -> ResolutionBatch:
+    def resolve_available(
+        self,
+        links: Iterable[str],
+        *,
+        on_expanded: Callable[[str, list[str]], None] | None = None,
+        on_started: Callable[[str], None] | None = None,
+        on_resolved: Callable[[str, str], None] | None = None,
+        on_failed: Callable[[str, str], None] | None = None,
+    ) -> ResolutionBatch:
         """Resolve every available source without discarding a usable batch for one failure."""
 
-        expanded = self.expand_sources(links)
         resolved: list[ResolvedLink] = []
         failures: list[tuple[str, str]] = []
-        for index, link in enumerate(expanded):
+
+        def fail(link: str, error: str) -> None:
+            failures.append((link, error))
+            if on_failed:
+                on_failed(link, error)
+
+        sources: list[str] = []
+        for link in links:
+            if self._stop.is_set():
+                break
             try:
-                resolved.append(ResolvedLink(source_url=link, direct_url=self.resolve(link)))
+                expanded = self.expand_sources([link])
             except ResolutionError as exc:
-                failures.append((link, str(exc)))
-            if index + 1 < len(expanded):
-                time.sleep(BETWEEN_LINK_DELAY)
+                fail(link, str(exc))
+                continue
+            if on_expanded:
+                on_expanded(link, expanded)
+            sources.extend(expanded)
+
+        used_browser = False
+        for source in dict.fromkeys(sources):
+            if self._stop.is_set():
+                break
+            needs_browser = not self.is_direct_link(source)
+            if used_browser and needs_browser and self._stop.wait(BETWEEN_LINK_DELAY):
+                break
+            if on_started:
+                on_started(source)
+            try:
+                direct = self.resolve(source)
+            except ResolutionError as exc:
+                if self._stop.is_set():
+                    break
+                fail(source, str(exc))
+            else:
+                resolved.append(ResolvedLink(source_url=source, direct_url=direct))
+                if on_resolved:
+                    on_resolved(source, direct)
+            used_browser = used_browser or needs_browser
         return ResolutionBatch(links=resolved, failures=failures)
 
     def resolve_many(self, links: Iterable[str]) -> list[ResolvedLink]:

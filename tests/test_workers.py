@@ -19,6 +19,16 @@ def test_download_worker_uses_the_prepared_queue_without_global_cache(tmp_path) 
     assert worker.resolved_links == pairs
 
 
+def test_download_progress_supports_files_larger_than_2_gib(tmp_path) -> None:
+    worker = DownloadWorker([], tmp_path)
+    received: list[tuple[int, int]] = []
+    worker.progress.connect(lambda done, total, _speed: received.append((done, total)))
+
+    worker.progress.emit(3 * 1024**3, 4 * 1024**3, 1.0)
+
+    assert received == [(3 * 1024**3, 4 * 1024**3)]
+
+
 class _ResolveParent(QtCore.QObject):
     def __init__(self, links: list[str]):
         super().__init__()

@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 import threading
 import time
+from collections import deque
 from collections.abc import Callable
 from pathlib import Path
 from urllib.parse import unquote, urlparse
@@ -14,9 +15,43 @@ from ff_downloader.config import DEFAULT_TIMEOUT, STREAM_BLOCK_SIZE
 ProgressFn = Callable[[int, int, float], None]
 LogFn = Callable[[str], None]
 
+REPORT_INTERVAL = 0.2
+TRANSFER_ATTEMPTS = 5
+RETRY_DELAY = 2.0
+TRANSIENT_ERRORS = (
+    requests.ConnectionError,
+    requests.Timeout,
+    requests.exceptions.ChunkedEncodingError,
+)
+
 
 class DownloadCancelled(RuntimeError):
     pass
+
+
+class LinkExpired(RuntimeError):
+    pass
+
+
+class SpeedMeter:
+    """Transfer speed averaged over a short sliding window."""
+
+    def __init__(self, window: float = 4.0):
+        self.window = window
+        self._samples: deque[tuple[float, int]] = deque()
+
+    def reset(self) -> None:
+        self._samples.clear()
+
+    def update(self, done: int, now: float | None = None) -> float:
+        now = time.monotonic() if now is None else now
+        samples = self._samples
+        samples.append((now, done))
+        while len(samples) > 2 and now - samples[0][0] > self.window:
+            samples.popleft()
+        started, base = samples[0]
+        # Too short a span gives wild spikes; report nothing until there is a real sample.
+        return (done - base) / (now - started) if now - started >= 0.5 else 0.0
 
 
 class DownloadEngine:
@@ -38,13 +73,16 @@ class DownloadEngine:
         self._cancel.set()
         self._pause.clear()
 
-    def _checkpoint(self) -> None:
-        if self._cancel.is_set():
-            raise DownloadCancelled("Download cancelled")
-        while self._pause.is_set():
-            time.sleep(0.1)
+    def checkpoint(self) -> bool:
+        """Raise once cancelled and block while paused; return whether it paused."""
+        paused = False
+        while True:
             if self._cancel.is_set():
                 raise DownloadCancelled("Download cancelled")
+            if not self._pause.is_set():
+                return paused
+            paused = True
+            time.sleep(0.1)
 
     @staticmethod
     def filename_from_url(url: str) -> str:
@@ -62,72 +100,101 @@ class DownloadEngine:
 
     def download(self, url: str, destination: Path) -> Path:
         destination.parent.mkdir(parents=True, exist_ok=True)
-        self._cancel.clear()
-        self._pause.clear()
+        part = destination.with_name(f"{destination.name}.part")
+        # Older versions wrote straight to the final name; keep resuming those files in place.
+        working = destination if destination.is_file() and not part.exists() else part
 
-        existing_size = destination.stat().st_size if destination.is_file() else 0
-        req_headers = {}
-        if existing_size > 0:
-            req_headers["Range"] = f"bytes={existing_size}-"
+        stalls = 0
+        while True:
+            before = self._size(working)
+            try:
+                self._transfer(url, working, destination.name)
+                break
+            except TRANSIENT_ERRORS:
+                stalls = 0 if self._size(working) > before else stalls + 1
+                if stalls >= TRANSFER_ATTEMPTS:
+                    raise
+                self.log(f"Connection interrupted; resuming {destination.name}")
+                self._cancel.wait(min(RETRY_DELAY * stalls, 10))
 
+        if working != destination:
+            working.replace(destination)
+        self.log(f"Downloaded {destination.name}")
+        return destination
+
+    @staticmethod
+    def _size(path: Path) -> int:
+        return path.stat().st_size if path.is_file() else 0
+
+    def _transfer(self, url: str, working: Path, name: str) -> None:
+        self.checkpoint()
+        existing_size = self._size(working)
+        req_headers = {"Range": f"bytes={existing_size}-"} if existing_size > 0 else {}
         response = requests.get(url, headers=req_headers, stream=True, timeout=DEFAULT_TIMEOUT)
+        try:
+            if response.status_code == 416:
+                self.log(f"File already complete: {name}")
+                return
 
-        if response.status_code == 416:
-            self.log(f"File already complete: {destination.name}")
-            response.close()
-            return destination
-
-        if response.status_code == 206:
-            content_range = response.headers.get("Content-Range", "")
-            match = re.search(r"/(\d+)$", content_range)
-            total_size = int(match.group(1)) if match else existing_size + int(response.headers.get("content-length", 0))
-            if existing_size >= total_size > 0:
-                self.log(f"File already complete: {destination.name}")
-                response.close()
-                return destination
-            mode = "ab"
-            initial = existing_size
-            self.log(f"Resuming {destination.name} from {existing_size} bytes")
-        elif response.status_code == 200:
-            total_size = int(response.headers.get("content-length", 0) or 0)
-            if existing_size > 0 and total_size and existing_size >= total_size:
-                self.log(f"File already complete: {destination.name}")
-                response.close()
-                return destination
-            if existing_size > 0:
-                self.log(f"Server ignored resume request; restarting {destination.name}")
-            mode = "wb"
-            initial = 0
-        else:
-            response.close()
-            if (
+            if response.status_code == 206:
+                content_range = response.headers.get("Content-Range", "")
+                match = re.search(r"/(\d+)$", content_range)
+                total_size = (
+                    int(match.group(1))
+                    if match
+                    else existing_size + int(response.headers.get("content-length", 0))
+                )
+                if existing_size >= total_size > 0:
+                    self.log(f"File already complete: {name}")
+                    return
+                mode = "ab"
+                initial = existing_size
+                self.log(f"Resuming {name} from {existing_size} bytes")
+            elif response.status_code == 200:
+                total_size = int(response.headers.get("content-length", 0) or 0)
+                if existing_size > 0 and total_size and existing_size >= total_size:
+                    self.log(f"File already complete: {name}")
+                    return
+                if existing_size > 0:
+                    self.log(f"Server ignored resume request; restarting {name}")
+                mode = "wb"
+                initial = 0
+            elif (
                 urlparse(url).hostname == "dl.fuckingfast.co"
                 and response.status_code in {401, 403, 404, 410}
             ):
-                raise RuntimeError(
+                raise LinkExpired(
                     "This direct link has expired or is unavailable. Paste the original share link "
                     "to prepare a fresh download URL."
                 )
-            raise RuntimeError(f"Failed to download file (HTTP {response.status_code})")
+            else:
+                raise RuntimeError(f"Failed to download file (HTTP {response.status_code})")
 
-        started = time.monotonic()
-        done = initial
-        try:
-            with destination.open(mode) as handle:
-                for data in response.iter_content(STREAM_BLOCK_SIZE):
-                    self._checkpoint()
-                    if not data:
-                        continue
-                    handle.write(data)
-                    done += len(data)
-                    elapsed = max(time.monotonic() - started, 0.001)
-                    self.progress(done, total_size, (done - initial) / elapsed)
+            self._stream(response, working, mode, initial, total_size)
         finally:
             response.close()
 
-        final_size = destination.stat().st_size
-        if total_size and final_size < total_size:
-            raise RuntimeError(f"Download incomplete: {final_size}/{total_size} bytes")
+    def _stream(self, response, working: Path, mode: str, initial: int, total_size: int) -> None:
+        done = initial
+        meter = SpeedMeter()
+        meter.update(done)
+        speed = 0.0
+        reported = 0.0
+        with working.open(mode) as handle:
+            for data in response.iter_content(STREAM_BLOCK_SIZE):
+                if self.checkpoint():
+                    meter.reset()
+                    meter.update(done)
+                if not data:
+                    continue
+                handle.write(data)
+                done += len(data)
+                now = time.monotonic()
+                if now - reported >= REPORT_INTERVAL:
+                    reported = now
+                    speed = meter.update(done, now)
+                    self.progress(done, total_size, speed)
+        self.progress(done, total_size, speed)
 
-        self.log(f"Downloaded {destination.name}")
-        return destination
+        if total_size and done < total_size:
+            raise requests.ConnectionError(f"Download incomplete: {done}/{total_size} bytes")

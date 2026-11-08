@@ -23,6 +23,8 @@ target-version = "py310"
 # Browser polling/teardown loops intentionally swallow transient exceptions,
 # mirroring the upstream Fitgirl-Easy-Downloader flow.
 "ff_downloader/core/browser_resolver.py" = ["S110", "BLE001"]
+# Any browser-install failure is reported to the UI instead of killing the worker thread.
+"ff_downloader/workers.py" = ["BLE001"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

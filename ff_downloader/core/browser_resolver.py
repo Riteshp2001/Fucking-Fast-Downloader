@@ -8,7 +8,7 @@ from collections.abc import Callable
 from urllib.parse import urlparse
 
 from camoufox.async_api import AsyncCamoufox
-from camoufox.pkgman import CamoufoxNotInstalled, camoufox_path
+from camoufox.pkgman import camoufox_path
 
 from ff_downloader.config import (
     BROWSER_PROFILE_DIR,
@@ -19,9 +19,40 @@ from ff_downloader.config import (
     TURNSTILE_WAIT_SECS,
 )
 from ff_downloader.core.errors import ResolutionError
-from ff_downloader.core.fast_downloader import patch_camoufox_fast_download
+from ff_downloader.core.fast_downloader import (
+    ProgressFn,
+    download_progress,
+    patch_camoufox_fast_download,
+)
 
 LogFn = Callable[[str], None]
+
+_INSTALL_LOCK = threading.Lock()
+
+
+def browser_installed() -> bool:
+    """Whether the Camoufox build this library pairs with is installed and launchable."""
+    try:
+        camoufox_path(download_if_missing=False)
+    except Exception:
+        return False
+    return True
+
+
+def ensure_browser_installed(
+    log: LogFn,
+    progress: ProgressFn | None = None,
+    stop: threading.Event | None = None,
+) -> None:
+    """Download the browser once, reporting ``progress`` and aborting when ``stop`` is set."""
+    patch_camoufox_fast_download()
+    with _INSTALL_LOCK:
+        if browser_installed():
+            return
+        log("Downloading the browser engine (one-time, ~660 MB)…")
+        with download_progress(progress, stop.is_set if stop else None):
+            camoufox_path()
+        log("Browser engine ready")
 
 
 class HeadlessBrowserResolver:
@@ -32,9 +63,10 @@ class HeadlessBrowserResolver:
     visible browser window before the app requests a fresh direct URL.
     """
 
-    def __init__(self, log: LogFn | None = None):
+    def __init__(self, log: LogFn | None = None, stop: threading.Event | None = None):
         patch_camoufox_fast_download()
         self.log = log or (lambda _message: None)
+        self._stop = stop or threading.Event()
         self._loop: asyncio.AbstractEventLoop | None = None
         self._loop_thread: threading.Thread | None = None
         self._loop_ready = threading.Event()
@@ -64,18 +96,17 @@ class HeadlessBrowserResolver:
     def _submit(self, coro):
         return asyncio.run_coroutine_threadsafe(coro, self._loop)
 
+    def cancel(self) -> None:
+        self._stop.set()
+
+    def _check_stop(self) -> None:
+        if self._stop.is_set():
+            raise ResolutionError("Stopped")
+
     # --------------------------------------------------------------- browser
 
     def _ensure_browser_installed(self) -> None:
-        try:
-            camoufox_path(download_if_missing=False)
-        except CamoufoxNotInstalled:
-            self.log(
-                "First run: downloading the Camoufox browser (~660 MB). "
-                "This happens once and may take a few minutes…"
-            )
-            camoufox_path()
-            self.log("Camoufox browser ready.")
+        ensure_browser_installed(self.log, stop=self._stop)
 
     async def _ensure_browser(self):
         if self._browser is None:
@@ -94,10 +125,7 @@ class HeadlessBrowserResolver:
                 self._browser = await self._camoufox.__aenter__()
             except Exception as exc:
                 self.log(f"Could not start the browser: {exc}")
-                raise ResolutionError(
-                    "Could not start the Camoufox browser. Run `camoufox fetch` and try "
-                    "again, or check your internet connection."
-                ) from exc
+                raise ResolutionError(f"Could not start the browser engine ({exc})") from exc
             self._page = await self._browser.new_page()
         return self._page
 
@@ -135,8 +163,9 @@ class HeadlessBrowserResolver:
         return bool(not state.get("hasChallenge") and state.get("hasDownload"))
 
     async def _wait_for_cf_clear(self, page) -> bool:
-        self.log("Waiting for Cloudflare check…")
+        self.log("Waiting for the Cloudflare check…")
         for i in range(CF_WAIT_SECS):
+            self._check_stop()
             try:
                 if await self._page_ready(page):
                     self.log(f"Cloudflare cleared after {i + 1}s")
@@ -149,8 +178,9 @@ class HeadlessBrowserResolver:
         return False
 
     async def _wait_for_turnstile(self, page) -> str | None:
-        self.log("Complete verification in the browser window, then return here…")
+        self.log("Complete the verification in the browser window")
         for i in range(TURNSTILE_WAIT_SECS):
+            self._check_stop()
             try:
                 token = await page.evaluate(
                     """() => window.turnstileToken
@@ -158,7 +188,7 @@ class HeadlessBrowserResolver:
                         || ''"""
                 )
                 if isinstance(token, str) and len(token) > 20:
-                    self.log(f"Turnstile ready after {i + 1}s")
+                    self.log(f"Verification complete after {i + 1}s")
                     return token
             except Exception:
                 pass
@@ -199,6 +229,7 @@ class HeadlessBrowserResolver:
         last_error = "unknown error"
 
         for attempt in range(1, BROWSER_RESOLVE_ATTEMPTS + 1):
+            self._check_stop()
             try:
                 await page.goto(link, wait_until="domcontentloaded")
             except Exception as exc:
@@ -209,7 +240,7 @@ class HeadlessBrowserResolver:
                 break
 
             if not await self._wait_for_cf_clear(page):
-                last_error = "Stuck on Cloudflare 'Just a moment' page"
+                last_error = "Cloudflare check timed out"
             else:
                 has_widget = False
                 try:
@@ -222,11 +253,11 @@ class HeadlessBrowserResolver:
                 if has_widget:
                     token = await self._wait_for_turnstile(page)
                 else:
-                    self.log("No captcha widget on page, session already trusted")
+                    self.log("No verification needed")
                     token = ""
 
                 if token is None:
-                    last_error = "Turnstile token not ready"
+                    last_error = "Verification was not completed in time"
                 else:
                     result = await self._post_go(page, file_id, token)
                     if not isinstance(result, dict):
@@ -235,7 +266,8 @@ class HeadlessBrowserResolver:
                         return result["redirect"]
                     else:
                         last_error = (
-                            f"No HX-Redirect ({result.get('body') or result.get('status')})"
+                            "No download link returned "
+                            f"({result.get('body') or result.get('status')})"
                         )
 
             if attempt < BROWSER_RESOLVE_ATTEMPTS:

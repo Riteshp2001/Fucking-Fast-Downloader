@@ -80,3 +80,35 @@ def test_resolve_available_keeps_working_when_one_share_link_has_expired(monkeyp
     assert batch.failures == [
         ("https://fuckingfast.co/expired", "This share link is no longer available")
     ]
+
+
+def test_resolve_available_reports_each_link_as_it_is_prepared() -> None:
+    resolver = FuckingFastResolver(log=lambda _m: None)
+    links = ["https://dl.fuckingfast.co/one", "https://dl.fuckingfast.co/two"]
+    events: list[tuple[str, ...]] = []
+
+    resolver.resolve_available(
+        links,
+        on_expanded=lambda link, sources: events.append(("expanded", link, *sources)),
+        on_started=lambda link: events.append(("started", link)),
+        on_resolved=lambda link, direct: events.append(("resolved", link, direct)),
+    )
+
+    assert events == [
+        ("expanded", links[0], links[0]),
+        ("expanded", links[1], links[1]),
+        ("started", links[0]),
+        ("resolved", links[0], links[0]),
+        ("started", links[1]),
+        ("resolved", links[1], links[1]),
+    ]
+
+
+def test_a_stopped_resolver_does_not_start_more_links() -> None:
+    resolver = FuckingFastResolver(log=lambda _m: None)
+    resolver.cancel()
+
+    batch = resolver.resolve_available(["https://dl.fuckingfast.co/one"])
+
+    assert batch.links == []
+    assert batch.failures == []
