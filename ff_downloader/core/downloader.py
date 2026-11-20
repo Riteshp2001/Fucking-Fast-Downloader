@@ -18,6 +18,7 @@ LogFn = Callable[[str], None]
 REPORT_INTERVAL = 0.2
 TRANSFER_ATTEMPTS = 5
 RETRY_DELAY = 2.0
+SIZE_PROBE_TIMEOUT = (3, 3)
 TRANSIENT_ERRORS = (
     requests.ConnectionError,
     requests.Timeout,
@@ -98,11 +99,48 @@ class DownloadEngine:
         invalid = '<>:"/\\|?*'
         return "".join("_" if char in invalid else char for char in fragment)[:220]
 
-    def download(self, url: str, destination: Path) -> Path:
-        destination.parent.mkdir(parents=True, exist_ok=True)
+    @staticmethod
+    def probe_size(url: str) -> int | None:
+        """Check the file size without reading the response body."""
+        headers = {"Accept-Encoding": "identity"}
+        try:
+            with requests.head(
+                url, headers=headers, allow_redirects=True, timeout=SIZE_PROBE_TIMEOUT
+            ) as response:
+                size = _content_length(response)
+                if size is not None:
+                    return size
+                if response.status_code not in (200, 403, 405, 501):
+                    return None
+            with requests.get(
+                url,
+                headers={**headers, "Range": "bytes=0-0"},
+                stream=True,
+                timeout=SIZE_PROBE_TIMEOUT,
+            ) as response:
+                if response.status_code == 206:
+                    content_range = response.headers.get("Content-Range", "")
+                    match = re.fullmatch(r"bytes 0-0/([0-9]{1,20})", content_range)
+                    return int(match.group(1)) if match else None
+                return _content_length(response)
+        except requests.RequestException:
+            # Size lookup is advisory; the actual transfer reports any download failure.
+            return None
+        return None
+
+    @staticmethod
+    def _working_path(destination: Path) -> Path:
         part = destination.with_name(f"{destination.name}.part")
         # Older versions wrote straight to the final name; keep resuming those files in place.
-        working = destination if destination.is_file() and not part.exists() else part
+        return destination if destination.is_file() and not part.exists() else part
+
+    @classmethod
+    def existing_bytes(cls, destination: Path) -> int:
+        return cls._size(cls._working_path(destination))
+
+    def download(self, url: str, destination: Path) -> Path:
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        working = self._working_path(destination)
 
         stalls = 0
         while True:
@@ -181,20 +219,33 @@ class DownloadEngine:
         speed = 0.0
         reported = 0.0
         with working.open(mode) as handle:
-            for data in response.iter_content(STREAM_BLOCK_SIZE):
-                if self.checkpoint():
-                    meter.reset()
-                    meter.update(done)
-                if not data:
-                    continue
-                handle.write(data)
-                done += len(data)
-                now = time.monotonic()
-                if now - reported >= REPORT_INTERVAL:
-                    reported = now
-                    speed = meter.update(done, now)
-                    self.progress(done, total_size, speed)
+            self.progress(initial, total_size, 0.0)
+            try:
+                for data in response.iter_content(STREAM_BLOCK_SIZE):
+                    if self.checkpoint():
+                        meter.reset()
+                        meter.update(done)
+                    if not data:
+                        continue
+                    handle.write(data)
+                    done += len(data)
+                    now = time.monotonic()
+                    if now - reported >= REPORT_INTERVAL:
+                        reported = now
+                        speed = meter.update(done, now)
+                        self.progress(done, total_size, speed)
+            except (DownloadCancelled, *TRANSIENT_ERRORS):
+                self.progress(done, total_size, 0.0)
+                raise
         self.progress(done, total_size, speed)
 
         if total_size and done < total_size:
             raise requests.ConnectionError(f"Download incomplete: {done}/{total_size} bytes")
+
+
+def _content_length(response: requests.Response) -> int | None:
+    if response.status_code == 200:
+        length = response.headers.get("Content-Length", "").strip()
+        if re.fullmatch(r"[0-9]{1,20}", length):
+            return int(length)
+    return None

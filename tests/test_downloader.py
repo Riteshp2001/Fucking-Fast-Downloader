@@ -16,11 +16,48 @@ class _Response:
         self._chunks = chunks or []
         self.closed = False
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_exc) -> None:
+        self.close()
+
     def iter_content(self, _size: int):
         yield from self._chunks
 
     def close(self) -> None:
         self.closed = True
+
+
+def test_queue_size_probe_uses_head_when_length_is_known(monkeypatch) -> None:
+    response = _Response(200, {"Content-Length": str(5 * 1024**3)})
+    monkeypatch.setattr(downloader.requests, "head", lambda *_a, **_kw: response)
+    monkeypatch.setattr(downloader.requests, "get", lambda *_a, **_kw: pytest.fail("unexpected GET"))
+
+    assert DownloadEngine.probe_size("https://example.com/file") == 5 * 1024**3
+    assert response.closed
+
+
+@pytest.mark.parametrize(
+    ("headers", "expected"),
+    [
+        ({"Content-Range": "bytes 0-0/1234", "Content-Length": "1"}, 1234),
+        ({"Content-Range": "bytes 0-0/*", "Content-Length": "1"}, None),
+    ],
+)
+def test_queue_size_probe_uses_total_from_range_not_chunk_length(monkeypatch, headers, expected) -> None:
+    response = _Response(206, headers)
+    monkeypatch.setattr(downloader.requests, "head", lambda *_a, **_kw: _Response(405, {}))
+
+    def get(_url, *, headers, stream, **_kwargs):
+        assert headers["Range"] == "bytes=0-0"
+        assert stream
+        return response
+
+    monkeypatch.setattr(downloader.requests, "get", get)
+
+    assert DownloadEngine.probe_size("https://example.com/file") == expected
+    assert response.closed
 
 
 def test_resumes_a_file_even_when_its_size_matches_the_old_part_size_sentinel(
@@ -89,6 +126,28 @@ def test_resumes_after_the_connection_drops(tmp_path, monkeypatch) -> None:
     DownloadEngine().download("https://dl.fuckingfast.co/download/file.bin", destination)
 
     assert destination.read_bytes() == b"abc"
+
+
+def test_cancel_reports_the_partial_bytes_already_written(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(downloader, "REPORT_INTERVAL", float("inf"))
+    reports = []
+    engine = DownloadEngine(lambda done, total, speed: reports.append((done, total, speed)))
+
+    class _InterruptedResponse(_Response):
+        def iter_content(self, _size):
+            yield b"abc"
+            engine.cancel()
+            yield b"def"
+
+    monkeypatch.setattr(
+        downloader.requests, "get", lambda *_a, **_kw: _InterruptedResponse(200, {"content-length": "6"})
+    )
+    destination = tmp_path / "part.bin"
+    with pytest.raises(DownloadCancelled):
+        engine.download("https://example.com/part.bin", destination)
+
+    assert reports[-1] == (3, 6, 0.0)
+    assert DownloadEngine.existing_bytes(destination) == 3
 
 
 def test_a_cancel_between_files_stops_the_next_download(tmp_path) -> None:

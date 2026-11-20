@@ -1,13 +1,13 @@
 [project]
 name = "fucking-fast-downloader"
-version = "2.2.0"
+version = "2.2.1"
 description = "PyQt desktop downloader for public FuckingFast share links"
 requires-python = ">=3.10"
 dependencies = [
   "PyQt5>=5.15.10",
   "requests>=2.31.0",
   "beautifulsoup4>=4.12.3",
-  "camoufox>=0.5.0",
+  "camoufox>=0.5.9,<0.6",
 ]
 
 [tool.ruff]

@@ -7,8 +7,11 @@ import threading
 from collections.abc import Callable
 from urllib.parse import urlparse
 
+from camoufox import pkgman
 from camoufox.async_api import AsyncCamoufox
+from camoufox.browser_pin import effective_pin
 from camoufox.pkgman import camoufox_path
+from requests.exceptions import RequestException
 
 from ff_downloader.config import (
     BROWSER_PROFILE_DIR,
@@ -39,6 +42,35 @@ def browser_installed() -> bool:
     return True
 
 
+def _install_browser() -> None:
+    pin = effective_pin()
+    if pin is None:
+        camoufox_path()
+        return
+
+    # The implicit installer scans only the first page of releases and can
+    # mask an error on the official source with a 404 from its fallback repo.
+    repo = pkgman.RepoConfig.find_by_name(pin.repo_name)
+    if repo is None:
+        raise ResolutionError(f"Unknown Camoufox release source: {pin.repo_name}")
+    try:
+        release = pkgman.github_api(f"repos/{pin.repo}/releases/tags/{pin.tag}")
+        versions = pkgman.release_versions(release, repo, repo.build_pattern())
+        build = next((item for item in versions if item.version.full_string == pin.spec), None)
+        if build is None:
+            raise ResolutionError(f"Camoufox {pin.tag} has no compatible browser for this platform.")
+        pkgman.CamoufoxFetcher(repo_config=repo, selected_version=build).install()
+    except RequestException as exc:
+        # Don't expose signed release-asset redirect URLs in the session log.
+        response = exc.response
+        reason = f"HTTP {response.status_code}" if response is not None else type(exc).__name__
+        raise ResolutionError(
+            f"Could not fetch Camoufox {pin.tag} from {pin.repo} ({reason}). "
+            "Check your connection to GitHub and try again."
+        ) from exc
+    camoufox_path(download_if_missing=False)
+
+
 def ensure_browser_installed(
     log: LogFn,
     progress: ProgressFn | None = None,
@@ -49,9 +81,11 @@ def ensure_browser_installed(
     with _INSTALL_LOCK:
         if browser_installed():
             return
-        log("Downloading the browser engine (one-time, ~660 MB)…")
+        if stop is not None and stop.is_set():
+            raise ResolutionError("Stopped")
+        log("Downloading the browser engine (one-time download)…")
         with download_progress(progress, stop.is_set if stop else None):
-            camoufox_path()
+            _install_browser()
         log("Browser engine ready")
 
 

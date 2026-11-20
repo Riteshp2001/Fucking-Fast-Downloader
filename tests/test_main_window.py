@@ -157,6 +157,49 @@ def test_unchecked_files_are_left_out_of_the_download(monkeypatch, tmp_path) -> 
     app.processEvents()
 
 
+def test_queue_eta_tracks_pending_bytes_and_keeps_totals_after_files_finish(monkeypatch, tmp_path) -> None:
+    app = _application()
+    monkeypatch.setattr(main_window, "browser_installed", lambda: True)
+    monkeypatch.setattr(main_window.DownloadWorker, "start", lambda _worker: None)
+    window = main_window.MainWindow()
+    second = "https://fuckingfast.co/second-file#second.bin"
+    second_direct = "https://dl.fuckingfast.co/download/second"
+    window.link_input.setPlainText(f"{SOURCE}\n{second}")
+    window._show_resolution([(SOURCE, DIRECT), (second, second_direct)], [])
+    window.download_dir = tmp_path
+    window.download_all()
+    worker = window.download_worker
+    assert worker is not None
+
+    worker.item_started.emit(SOURCE, "example.bin")
+    worker.progress.emit(50, 100, 10.0)
+    assert window.queue_detail.text() == "Queue: 50 B downloaded · Queue ETA: —"
+    worker.item_size.emit(second, 20, 200)
+    worker.item_size.emit(SOURCE, 0, 100)  # A late probe must not overwrite live bytes.
+    assert window.queue_detail.text() == "Queue: 70 B of 300 B downloaded · Queue ETA: 24s"
+    assert window.detail_text.text().endswith("5s left")
+    window._sample_speed()
+    assert list(window.speed_plot.samples) == [0.0, 10.0]
+
+    window.toggle_pause()
+    window._sample_speed()
+    assert window.queue_detail.text().endswith("Paused")
+    assert window.speed_plot.samples[-1] == 0
+    window.toggle_pause()
+    assert window.queue_detail.text().endswith("Queue ETA: —")
+
+    worker.item_done.emit(SOURCE, 100)
+    worker.item_started.emit(second, "second.bin")
+    worker.progress.emit(60, 200, 20.0)
+    assert window.queue_detail.text() == "Queue: 160 B of 300 B downloaded · Queue ETA: 7s"
+    worker.item_done.emit(second, 200)
+    worker.all_done.emit()
+    assert window.queue_detail.text() == "Queue: 300 B of 300 B downloaded"
+    assert not window._speed_timer.isActive()
+    window.close()
+    app.processEvents()
+
+
 def test_adding_a_link_keeps_files_that_are_already_prepared() -> None:
     app = _application()
     window = main_window.MainWindow()

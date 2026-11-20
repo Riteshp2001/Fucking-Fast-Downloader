@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import threading
-import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from PyQt5 import QtCore
@@ -87,8 +87,9 @@ class DownloadWorker(QtCore.QThread):
     log = QtCore.pyqtSignal(str)
     # object, not int: Qt's int is 32-bit and files can be larger than 2 GiB.
     progress = QtCore.pyqtSignal(object, object, float)
+    item_size = QtCore.pyqtSignal(str, object, object)
     item_started = QtCore.pyqtSignal(str, str)
-    item_done = QtCore.pyqtSignal(str)
+    item_done = QtCore.pyqtSignal(str, object)
     failed = QtCore.pyqtSignal(str, str)
     expired = QtCore.pyqtSignal(str, str)
     all_done = QtCore.pyqtSignal()
@@ -106,6 +107,7 @@ class DownloadWorker(QtCore.QThread):
         self.directory = directory
         self.resolved_links = list(resolved_links or [])
         self.engine = DownloadEngine(self.progress.emit, self.log.emit)
+        self._stop_probes = threading.Event()
 
     def pause(self) -> None:
         self.engine.pause()
@@ -114,22 +116,39 @@ class DownloadWorker(QtCore.QThread):
         self.engine.resume()
 
     def cancel(self) -> None:
+        self._stop_probes.set()
         self.engine.cancel()
 
+    def _probe_item(self, source: str, direct: str, path: Path) -> None:
+        if self._stop_probes.is_set():
+            return
+        try:
+            done = self.engine.existing_bytes(path)
+        except OSError:
+            done = 0
+        total = self.engine.probe_size(direct)
+        if not self._stop_probes.is_set():
+            self.item_size.emit(source, done if total is None else min(done, total), total)
+
     def run(self) -> None:
+        probes = ThreadPoolExecutor(max_workers=4, thread_name_prefix="ff-size")
         try:
             prepared = self.resolved_links or self._resolve_links()
-            for index, (source, direct) in enumerate(prepared):
+            targets = []
+            for source, direct in prepared:
+                filename = self.engine.filename_from_link(source)
+                path = self.directory / (filename or self.engine.filename_from_url(direct))
+                targets.append((source, direct, path))
+                probes.submit(self._probe_item, source, direct, path)
+            for index, (source, direct, path) in enumerate(targets):
                 try:
                     if index:
-                        time.sleep(BETWEEN_LINK_DELAY)
+                        self._stop_probes.wait(BETWEEN_LINK_DELAY)
                     self.engine.checkpoint()
-                    filename = self.engine.filename_from_link(source)
-                    filename = filename or self.engine.filename_from_url(direct)
-                    self.item_started.emit(source, filename)
-                    self.log.emit(f"Downloading {filename}")
-                    self.engine.download(direct, self.directory / filename)
-                    self.item_done.emit(source)
+                    self.item_started.emit(source, path.name)
+                    self.log.emit(f"Downloading {path.name}")
+                    saved = self.engine.download(direct, path)
+                    self.item_done.emit(source, saved.stat().st_size)
                 except DownloadCancelled:
                     self.log.emit("Download cancelled")
                     break
@@ -140,6 +159,8 @@ class DownloadWorker(QtCore.QThread):
         except ResolutionError as exc:
             self.failed.emit("", str(exc))
         finally:
+            self._stop_probes.set()
+            probes.shutdown(wait=True, cancel_futures=True)
             self.all_done.emit()
 
     def _resolve_links(self) -> list[tuple[str, str]]:

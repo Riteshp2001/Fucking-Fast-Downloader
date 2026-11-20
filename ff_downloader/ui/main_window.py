@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 import time
 import typing
+from collections import deque
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -10,7 +11,7 @@ from urllib.parse import unquote, urlparse
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 
-from ff_downloader.config import APP_NAME, APP_VERSION, DOWNLOADS_DIR
+from ff_downloader.config import APP_NAME, APP_VERSION, BETWEEN_LINK_DELAY, DOWNLOADS_DIR
 from ff_downloader.core import DownloadEngine, FuckingFastResolver, SpeedMeter, browser_installed
 from ff_downloader.ui.brand_assets import ASSETS_DIR, application_icon, brand_mark
 from ff_downloader.ui.session import load_session, save_session
@@ -120,6 +121,44 @@ class ElidedLabel(QtWidgets.QLabel):
         shown = self.fontMetrics().elidedText(self._full_text, self._mode, max(self.width(), 1))
         super().setText(shown)
         self.setToolTip("" if shown == self._full_text else self._full_text)
+
+
+class SpeedPlot(QtWidgets.QWidget):
+    SAMPLE_INTERVAL = 500
+    WINDOW_SECONDS = 60
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.samples: deque[float] = deque(maxlen=self.WINDOW_SECONDS * 1000 // self.SAMPLE_INTERVAL)
+        self.line_color = QtGui.QColor()
+        self.grid_color = QtGui.QColor()
+        self.setFixedSize(132, 28)
+        self.setAccessibleName("Download speed over the last minute")
+
+    def add_sample(self, speed: float) -> None:
+        self.samples.append(speed)
+        self.setToolTip(f"Last 60 seconds · Peak {format_size(max(self.samples))}/s")
+        self.update()
+
+    def paintEvent(self, _event: QtGui.QPaintEvent) -> None:
+        painter = QtGui.QPainter(self)
+        painter.setRenderHint(QtGui.QPainter.Antialiasing)
+        bounds = QtCore.QRectF(self.rect()).adjusted(1, 1, -1, -1)
+        painter.setPen(self.grid_color)
+        painter.drawRoundedRect(bounds, 4, 4)
+        if self.samples:
+            area = bounds.adjusted(3, 3, -3, -3)
+            scale = max(max(self.samples), 1)
+            step = area.width() / (self.samples.maxlen - 1)
+            points = QtGui.QPolygonF([
+                QtCore.QPointF(area.right() - i * step, area.bottom() - speed / scale * area.height())
+                for i, speed in enumerate(reversed(self.samples))
+            ])
+            painter.setPen(QtGui.QPen(self.line_color, 2))
+            if len(points) == 1:
+                painter.drawPoint(points[0])
+            else:
+                painter.drawPolyline(points)
 
 
 class TitleBar(QtWidgets.QFrame):
@@ -315,6 +354,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self._download_total = 0
         self._failed_downloads = 0
         self._current_source = ""
+        self._queue_bytes: dict[str, tuple[int, int | None]] = {}
+        self._queue_pending: set[str] = set()
+        self._transfer_speed = 0.0
+        self._last_progress_at = 0.0
+        self._speed_timer = QtCore.QTimer(self)
+        self._speed_timer.setInterval(SpeedPlot.SAMPLE_INTERVAL)
         self._resolve_stopped = False
         self._prepare_queued = False
         self._browser_installing = False
@@ -575,6 +620,21 @@ class MainWindow(QtWidgets.QMainWindow):
         info.addWidget(self.detail_text)
         layout.addLayout(info)
 
+        self.queue_stats = QtWidgets.QWidget()
+        totals = QtWidgets.QHBoxLayout(self.queue_stats)
+        totals.setContentsMargins(0, 0, 0, 0)
+        self.queue_detail = QtWidgets.QLabel()
+        self.queue_detail.setObjectName("queueDetail")
+        self.queue_detail.setToolTip("Includes bytes already on disk for this batch of checked files.")
+        speed_label = QtWidgets.QLabel("Speed · 60s")
+        speed_label.setObjectName("statusText")
+        self.speed_plot = SpeedPlot()
+        totals.addWidget(self.queue_detail, 1)
+        totals.addWidget(speed_label)
+        totals.addWidget(self.speed_plot)
+        self.queue_stats.hide()
+        layout.addWidget(self.queue_stats)
+
         actions = QtWidgets.QHBoxLayout()
         actions.setSpacing(8)
         self.folder_btn = self._button("", "folder", compact=True)
@@ -627,6 +687,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.resolved_list.itemChanged.connect(self._queue_item_changed)
         self.resolved_list.itemDoubleClicked.connect(self._queue_item_activated)
         self._session_timer.timeout.connect(self._save_session)
+        self._speed_timer.timeout.connect(self._sample_speed)
         for keys in ("Ctrl+Return", "Ctrl+Enter"):
             QtWidgets.QShortcut(QtGui.QKeySequence(keys), self, activated=self.resolve_links)
 
@@ -680,6 +741,9 @@ class MainWindow(QtWidgets.QMainWindow):
         p = self.palette
         dark = self.theme == "dark"
         self.title_bar.apply_theme(p["text"], p["muted"], p["accent"], dark)
+        self.speed_plot.line_color = QtGui.QColor(p["accent"])
+        self.speed_plot.grid_color = QtGui.QColor(p["border"])
+        self.speed_plot.update()
         check = (ASSETS_DIR / ("check-dark.svg" if dark else "check-light.svg")).as_posix()
 
         self.setStyleSheet(
@@ -700,8 +764,8 @@ class MainWindow(QtWidgets.QMainWindow):
             QLabel#noticeText {{ font-size: 12px; font-weight: 600; }}
             QLabel#cardTitle {{ font-size: 14px; font-weight: 700; }}
             QLabel#fileName {{ font-size: 14px; font-weight: 650; }}
-            QLabel#statusText, QLabel#transferDetail {{ color: {p['muted']}; font-size: 11px; }}
-            QLabel#transferDetail {{ font-weight: 600; }}
+            QLabel#statusText, QLabel#transferDetail, QLabel#queueDetail {{ color: {p['muted']}; font-size: 11px; }}
+            QLabel#transferDetail, QLabel#queueDetail {{ font-weight: 600; }}
             QLabel#emptyState {{ color: {p['subtle']}; font-size: 12px; padding: 18px; }}
             QLabel#pill, QLabel#statePill {{ background: {p['surface_alt']}; border: 1px solid {p['border']}; border-radius: 10px; padding: 3px 9px; color: {p['muted']}; font-size: 10px; font-weight: 700; }}
             QLabel#statePill[tone="accent"] {{ color: {p['accent']}; border-color: {p['accent']}; }}
@@ -1247,6 +1311,14 @@ class MainWindow(QtWidgets.QMainWindow):
         self._download_index = 0
         self._download_total = len(targets)
         self._current_source = ""
+        self._queue_bytes = {entry.source: (0, None) for entry in targets}
+        self._queue_pending = set(self._queue_bytes)
+        self._transfer_speed = 0.0
+        self.speed_plot.samples.clear()
+        self.speed_plot.add_sample(0.0)
+        self.queue_stats.show()
+        self._update_queue_stats()
+        self._speed_timer.start()
         for entry in targets:
             entry.state, entry.detail, entry.error = QUEUED, "", ""
             self._paint_entry(entry)
@@ -1260,6 +1332,7 @@ class MainWindow(QtWidgets.QMainWindow):
             resolved_links=[(entry.source, entry.direct) for entry in targets],
         )
         worker.log.connect(self.log)
+        worker.item_size.connect(self._download_size_found)
         worker.item_started.connect(self._download_started)
         worker.progress.connect(self.update_progress)
         worker.item_done.connect(self._download_item_done)
@@ -1274,8 +1347,46 @@ class MainWindow(QtWidgets.QMainWindow):
         self._update_queue_summary()
         self._sync_actions()
 
+    def _download_size_found(self, source: str, done: int, total: int | None) -> None:
+        if self._active_download and source in self._queue_pending and source != self._current_source:
+            self._queue_bytes[source] = (done, total)
+            self._update_queue_stats()
+
+    def _update_queue_stats(self) -> None:
+        done = sum(done for done, _ in self._queue_bytes.values())
+        totals = [total for _, total in self._queue_bytes.values() if total is not None]
+        size = format_size(done)
+        if len(totals) == len(self._queue_bytes):
+            size += f" of {format_size(sum(totals))}"
+        text = f"Queue: {size} downloaded"
+        if self._download_cancelled and self._active_download:
+            text += " · Stopping…"
+        elif self._paused:
+            text += " · Paused"
+        elif self._active_download and self._queue_pending:
+            pending = [self._queue_bytes[source] for source in self._queue_pending]
+            remaining = sum(max(0, total - saved) for saved, total in pending if total is not None)
+            speed = self._current_speed()
+            if speed > 0 and all(total is not None for _, total in pending):
+                seconds = remaining / speed + (len(pending) - 1) * BETWEEN_LINK_DELAY
+                text += f" · Queue ETA: {format_duration(seconds)}"
+            else:
+                text += " · Queue ETA: —"
+        self.queue_detail.setText(text)
+
+    def _current_speed(self) -> float:
+        if self._paused or self._download_cancelled or time.monotonic() - self._last_progress_at > 2:
+            return 0.0
+        return self._transfer_speed
+
+    def _sample_speed(self) -> None:
+        self.speed_plot.add_sample(self._current_speed())
+        self._update_queue_stats()
+
     def _download_started(self, source: str, filename: str) -> None:
         self._current_source = source
+        self._transfer_speed = 0.0
+        self._update_queue_stats()
         self._download_index += 1
         entry = self.entries.get(source)
         if entry is not None:
@@ -1289,6 +1400,16 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def update_progress(self, done: int, total: int, speed: float) -> None:
         done, total, speed = int(done), int(total), float(speed)
+        if self._current_source in self._queue_pending:
+            _, probed_total = self._queue_bytes[self._current_source]
+            known_total = total or probed_total
+            self._queue_bytes[self._current_source] = (
+                done, known_total if known_total is None or known_total >= done else None
+            )
+            if not self._paused:
+                self._transfer_speed = speed
+                self._last_progress_at = time.monotonic()
+            self._update_queue_stats()
         fraction = min(done / total, 1.0) if total else 0.0
         self.progress.setValue(int(fraction * 1000))
         details = [f"{fraction:.0%}"] if total else []
@@ -1308,7 +1429,17 @@ class MainWindow(QtWidgets.QMainWindow):
             entry.detail = " · ".join(row)
             self._paint_entry(entry)
 
-    def _download_item_done(self, source: str) -> None:
+    def _stop_queue_item(self, source: str) -> None:
+        if source in self._queue_pending:
+            self._queue_pending.remove(source)
+            if source == self._current_source:
+                self._transfer_speed = 0.0
+                self._current_source = ""
+            self._update_queue_stats()
+
+    def _download_item_done(self, source: str, size: int) -> None:
+        self._queue_bytes[source] = (size, size)
+        self._stop_queue_item(source)
         entry = self.entries.get(source)
         if entry is not None:
             entry.state, entry.detail, entry.error = DONE, "", ""
@@ -1319,6 +1450,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _download_failed(self, source: str, error: str) -> None:
         self._failed_downloads += 1
+        self._stop_queue_item(source)
         self.log(f"{self._queue_label(source) if source else 'Download'} failed: {error}")
         entry = self.entries.get(source)
         if entry is not None:
@@ -1329,6 +1461,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _download_expired(self, source: str, error: str) -> None:
         self._failed_downloads += 1
+        self._stop_queue_item(source)
         self.log(f"{self._queue_label(source)}: {error}")
         entry = self.entries.get(source)
         if entry is None:
@@ -1348,6 +1481,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self._active_download = False
         self._paused = False
         self._current_source = ""
+        self._transfer_speed = 0.0
+        self._speed_timer.stop()
+        self._update_queue_stats()
         for entry in self.entries.values():
             if entry.state in (QUEUED, DOWNLOADING):
                 entry.state, entry.detail = READY, ""
@@ -1373,6 +1509,7 @@ class MainWindow(QtWidgets.QMainWindow):
         if self.download_worker is None or not self._active_download:
             return
         self._paused = not self._paused
+        self._transfer_speed = 0.0
         if self._paused:
             self.download_worker.pause()
             self._set_status("Paused", "PAUSED")
@@ -1385,6 +1522,7 @@ class MainWindow(QtWidgets.QMainWindow):
         if entry is not None and entry.state == DOWNLOADING and self._paused:
             entry.detail = "Paused"
             self._paint_entry(entry)
+        self._update_queue_stats()
         self._sync_actions()
 
     def cancel_download(self) -> None:
@@ -1392,6 +1530,7 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         self._download_cancelled = True
         self.download_worker.cancel()
+        self._update_queue_stats()
         self._set_status("Stopping…", "STOPPING")
 
     def toggle_details(self) -> None:
@@ -1425,7 +1564,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self._set_button(self.browser_btn, "Retry", "refresh")
         else:
             self.browser_label.setText(
-                "Browser engine needed for share links · one-time ~660 MB download"
+                "Browser engine needed for share links · one-time download"
             )
             self._set_button(self.browser_btn, "Install", "download")
         self._refresh_solar_icons()
